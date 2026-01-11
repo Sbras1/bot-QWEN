@@ -92,10 +92,6 @@ async def handle_incoming(event):
     if len(bot_stats["messages_log"]) > 50:
         bot_stats["messages_log"].pop(0)
 
-    # 2. الرد التلقائي (مثال)
-    if "مرحبا" in message:
-        await event.reply("أهلاً! أنا أعمل الآن عبر سيرفر Render 🚀")
-
 # --- 3. التشغيل المزدوج ---
 if __name__ == '__main__':
     # التأكد من وجود البيانات
