@@ -78,6 +78,32 @@ session_string = os.environ.get('SESSION_STRING')  # جلسة المستخدم
 # إنشاء العميل باستخدام StringSession
 client = TelegramClient(StringSession(session_string), int(api_id) if api_id else 0, api_hash or '')
 
+# --- أوامر المالك (outgoing = أنت فقط) ---
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.say (.+)'))
+async def say_command(event):
+    """أمر الانتحال - يحذف رسالتك ويرسل النص كرسالة عادية"""
+    text = event.pattern_match.group(1)
+    await event.delete()
+    await event.respond(text)
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.del'))
+async def delete_command(event):
+    """حذف الرسالة المردود عليها"""
+    reply = await event.get_reply_message()
+    if reply:
+        await reply.delete()
+    await event.delete()
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.edit (.+)'))
+async def edit_command(event):
+    """تعديل الرسالة المردود عليها"""
+    text = event.pattern_match.group(1)
+    reply = await event.get_reply_message()
+    if reply and reply.out:
+        await reply.edit(text)
+    await event.delete()
+
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming(event):
     # 1. تسجيل البيانات للموقع
