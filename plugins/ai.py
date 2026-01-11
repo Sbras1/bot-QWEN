@@ -5,41 +5,48 @@ import os
 import httpx
 from telethon import events
 
-# رابط Gemini API
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent"
+# رابط Groq API
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def register(client):
     """تسجيل أوامر الذكاء الاصطناعي"""
     
-    api_key = os.environ.get('GEMINI_API_KEY')
+    api_key = os.environ.get('GROQ_API_KEY')
     
     @client.on(events.NewMessage(outgoing=True, pattern=r'ذكاء (.+)'))
     async def ai_command(event):
         """سؤال الذكاء الاصطناعي"""
         if not api_key:
-            await event.edit("❌ لم يتم تعيين GEMINI_API_KEY")
+            await event.edit("❌ لم يتم تعيين GROQ_API_KEY")
             return
         
         question = event.pattern_match.group(1)
         await event.edit("🤔 جاري التفكير...")
         
         try:
-            # إرسال الطلب لـ Gemini
+            # إرسال الطلب لـ Groq
             async with httpx.AsyncClient() as http:
                 response = await http.post(
-                    f"{GEMINI_URL}?key={api_key}",
+                    GROQ_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
                     json={
-                        "contents": [{
-                            "parts": [{"text": question}]
-                        }]
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": "أنت مساعد ذكي. أجب باللغة العربية بشكل مختصر ومفيد."},
+                            {"role": "user", "content": question}
+                        ],
+                        "max_tokens": 1024
                     },
                     timeout=30.0
                 )
                 
                 data = response.json()
                 
-                if "candidates" in data:
-                    answer = data["candidates"][0]["content"]["parts"][0]["text"]
+                if "choices" in data:
+                    answer = data["choices"][0]["message"]["content"]
                     
                     # تقصير الرد إذا كان طويلاً
                     if len(answer) > 4000:
