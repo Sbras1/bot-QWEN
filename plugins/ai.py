@@ -2,27 +2,21 @@
 أوامر الذكاء الاصطناعي 🤖
 """
 import os
-import asyncio
+import httpx
 from telethon import events
 
-# مكتبة Google Gemini
-import google.generativeai as genai
+# رابط Gemini API
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 
 def register(client):
     """تسجيل أوامر الذكاء الاصطناعي"""
     
-    # تهيئة Gemini
     api_key = os.environ.get('GEMINI_API_KEY')
-    if api_key:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-    else:
-        model = None
     
     @client.on(events.NewMessage(outgoing=True, pattern=r'ذكاء (.+)'))
     async def ai_command(event):
         """سؤال الذكاء الاصطناعي"""
-        if not model:
+        if not api_key:
             await event.edit("❌ لم يتم تعيين GEMINI_API_KEY")
             return
         
@@ -30,15 +24,31 @@ def register(client):
         await event.edit("🤔 جاري التفكير...")
         
         try:
-            # إرسال السؤال لـ Gemini
-            response = model.generate_content(question)
-            answer = response.text
-            
-            # تقصير الرد إذا كان طويلاً جداً
-            if len(answer) > 4000:
-                answer = answer[:4000] + "..."
-            
-            await event.edit(f"**🤖 الذكاء الاصطناعي:**\n\n{answer}")
+            # إرسال الطلب لـ Gemini
+            async with httpx.AsyncClient() as http:
+                response = await http.post(
+                    f"{GEMINI_URL}?key={api_key}",
+                    json={
+                        "contents": [{
+                            "parts": [{"text": question}]
+                        }]
+                    },
+                    timeout=30.0
+                )
+                
+                data = response.json()
+                
+                if "candidates" in data:
+                    answer = data["candidates"][0]["content"]["parts"][0]["text"]
+                    
+                    # تقصير الرد إذا كان طويلاً
+                    if len(answer) > 4000:
+                        answer = answer[:4000] + "..."
+                    
+                    await event.edit(f"**🤖 الذكاء الاصطناعي:**\n\n{answer}")
+                else:
+                    error = data.get("error", {}).get("message", "خطأ غير معروف")
+                    await event.edit(f"❌ خطأ: {error}")
             
         except Exception as e:
             await event.edit(f"❌ خطأ: {str(e)}")
