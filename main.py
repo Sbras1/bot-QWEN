@@ -3,6 +3,7 @@ import threading
 import asyncio
 from flask import Flask, render_template_string
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
 # --- 1. إعدادات الموقع (Flask) ---
 app = Flask(__name__)
@@ -72,10 +73,10 @@ def run_web_server():
 # جلب المتغيرات من بيئة النظام
 api_id = os.environ.get('API_ID')
 api_hash = os.environ.get('API_HASH')
-bot_token = os.environ.get('BOT_TOKEN')  # توكن البوت من BotFather
+session_string = os.environ.get('SESSION_STRING')  # جلسة المستخدم
 
-# إنشاء العميل
-client = TelegramClient('bot_session', int(api_id) if api_id else 0, api_hash or '')
+# إنشاء العميل باستخدام StringSession
+client = TelegramClient(StringSession(session_string), int(api_id) if api_id else 0, api_hash or '')
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming(event):
@@ -98,8 +99,8 @@ async def handle_incoming(event):
 # --- 3. التشغيل المزدوج ---
 if __name__ == '__main__':
     # التأكد من وجود البيانات
-    if not api_id or not api_hash or not bot_token:
-        print("❌ خطأ: يجب تعيين API_ID و API_HASH و BOT_TOKEN")
+    if not api_id or not api_hash or not session_string:
+        print("❌ خطأ: يجب تعيين API_ID و API_HASH و SESSION_STRING")
     else:
         # تشغيل الموقع في خيط منفصل (Thread) حتى لا يوقف البوت
         print("🌍 جاري تشغيل موقع الويب...")
@@ -107,6 +108,6 @@ if __name__ == '__main__':
         t.start()
 
         # تشغيل البوت في العملية الرئيسية
-        print("🤖 جاري تشغيل البوت...")
-        client.start(bot_token=bot_token)
+        print("🤖 جاري تشغيل اليوزربوت...")
+        client.start()
         client.run_until_disconnected()
