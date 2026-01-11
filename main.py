@@ -69,12 +69,13 @@ def run_web_server():
     app.run(host='0.0.0.0', port=10000)
 
 # --- 2. إعدادات البوت (Telethon) ---
-# جلب المتغيرات من بيئة النظام (سنضيفها في Render لاحقاً)
+# جلب المتغيرات من بيئة النظام
 api_id = os.environ.get('API_ID')
 api_hash = os.environ.get('API_HASH')
-# ملاحظة: في Render لا نستخدم ملف الجلسة .session، بل نستخدم StringSession (شرحها أسفل)
-# لكن للتبسيط الآن سنستخدم الجلسة العادية، قد تطلب منك الكود مرة واحدة عند التشغيل المحلي
-client = TelegramClient('my_render_session', int(api_id), api_hash)
+bot_token = os.environ.get('BOT_TOKEN')  # توكن البوت من BotFather
+
+# إنشاء العميل
+client = TelegramClient('bot_session', int(api_id) if api_id else 0, api_hash or '')
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming(event):
@@ -97,8 +98,8 @@ async def handle_incoming(event):
 # --- 3. التشغيل المزدوج ---
 if __name__ == '__main__':
     # التأكد من وجود البيانات
-    if not api_id or not api_hash:
-        print("❌ خطأ: يجب تعيين API_ID و API_HASH")
+    if not api_id or not api_hash or not bot_token:
+        print("❌ خطأ: يجب تعيين API_ID و API_HASH و BOT_TOKEN")
     else:
         # تشغيل الموقع في خيط منفصل (Thread) حتى لا يوقف البوت
         print("🌍 جاري تشغيل موقع الويب...")
@@ -107,5 +108,5 @@ if __name__ == '__main__':
 
         # تشغيل البوت في العملية الرئيسية
         print("🤖 جاري تشغيل البوت...")
-        client.start()
+        client.start(bot_token=bot_token)
         client.run_until_disconnected()
