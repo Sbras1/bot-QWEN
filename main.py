@@ -7,6 +7,7 @@ from flask import Flask, render_template_string
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 import plugins
+import database as db
 
 # --- 1. إعدادات الموقع (Flask) ---
 app = Flask(__name__)
@@ -106,6 +107,9 @@ if __name__ == '__main__':
     if not api_id or not api_hash or not session_string:
         print("❌ خطأ: يجب تعيين API_ID و API_HASH و SESSION_STRING")
     else:
+        # تهيئة قاعدة البيانات
+        db.init_firebase()
+        
         # تحميل الإضافات
         plugins.load_all(client)
         

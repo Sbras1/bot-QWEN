@@ -7,13 +7,7 @@ from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from PIL import Image
-
-# حفظ البيانات الأصلية للاستعادة
-original_profile = {
-    "first_name": None,
-    "last_name": None,
-    "bio": None
-}
+import database as db
 
 def register(client):
     """تسجيل أوامر الانتحال"""
@@ -29,10 +23,16 @@ def register(client):
         await event.edit("⏳ جاري الانتحال...")
         
         try:
-            # حفظ بياناتك الأصلية أولاً
+            # حفظ بياناتك الأصلية أولاً في Firestore
             me = await client.get_me()
-            original_profile["first_name"] = me.first_name
-            original_profile["last_name"] = me.last_name or ""
+            full = await client(GetFullUserRequest(me))
+            
+            # حفظ في قاعدة البيانات
+            db.save_original_profile(me.id, {
+                "first_name": me.first_name or "",
+                "last_name": me.last_name or "",
+                "bio": full.full_user.about or ""
+            })
             
             # جلب بيانات الضحية
             target = await reply.get_sender()
@@ -118,17 +118,22 @@ def register(client):
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'رجوع'))
     async def reset_command(event):
-        """استعادة البيانات الأصلية"""
+        """استعادة البيانات الأصلية من Firestore"""
         await event.edit("⏳ جاري الاستعادة...")
         
         try:
-            if original_profile["first_name"]:
-                await client(UpdateProfileRequest(
-                    first_name=original_profile["first_name"],
-                    last_name=original_profile["last_name"] or "",
-                    about=original_profile["bio"] or ""
-                ))
+            me = await client.get_me()
+            # جلب البيانات من قاعدة البيانات
+            original = db.get_original_profile(me.id)
             
-            await event.edit("✅ تم استعادة بياناتك الأصلية!")
+            if original:
+                await client(UpdateProfileRequest(
+                    first_name=original.get("first_name", ""),
+                    last_name=original.get("last_name", ""),
+                    about=original.get("bio", "")
+                ))
+                await event.edit("✅ تم استعادة بياناتك الأصلية!")
+            else:
+                await event.edit("❌ لم يتم العثور على بيانات محفوظة")
         except Exception as e:
             await event.edit(f"❌ خطأ: {str(e)}")
