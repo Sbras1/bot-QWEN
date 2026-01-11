@@ -19,7 +19,7 @@ def register(client):
     
     @client.on(events.NewMessage(outgoing=True, pattern=r'انتحال'))
     async def clone_command(event):
-        """انتحال شخص - رد على رسالته"""
+        """انتحال شخص - رد على رسالته (الاسم والصورة فقط)"""
         reply = await event.get_reply_message()
         if not reply:
             await event.edit("❌ رد على رسالة الشخص المراد انتحاله")
@@ -30,20 +30,16 @@ def register(client):
         try:
             # حفظ بياناتك الأصلية أولاً
             me = await client.get_me()
-            full = await client(GetFullUserRequest(me))
             original_profile["first_name"] = me.first_name
             original_profile["last_name"] = me.last_name or ""
-            original_profile["bio"] = full.full_user.about or ""
             
             # جلب بيانات الضحية
             target = await reply.get_sender()
-            target_full = await client(GetFullUserRequest(target))
             
-            # تغيير الاسم والبايو
+            # تغيير الاسم فقط
             await client(UpdateProfileRequest(
                 first_name=target.first_name or "",
-                last_name=target.last_name or "",
-                about=target_full.full_user.about or ""
+                last_name=target.last_name or ""
             ))
             
             # تغيير الصورة
