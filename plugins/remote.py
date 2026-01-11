@@ -5,6 +5,7 @@
 import os
 import httpx
 from telethon import events
+from telethon.tl.functions.users import GetFullUserRequest
 
 # رابط Groq API
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
