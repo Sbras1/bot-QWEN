@@ -6,6 +6,7 @@ from telethon import events
 from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.functions.users import GetFullUserRequest
+from PIL import Image
 
 # حفظ البيانات الأصلية للاستعادة
 original_profile = {
@@ -46,10 +47,16 @@ def register(client):
             photos = await client.get_profile_photos(target, limit=1)
             if photos:
                 photo = await client.download_media(photos[0])
-                await client(UploadProfilePhotoRequest(
-                    file=await client.upload_file(photo)
-                ))
+                # تحويل الصورة لـ JPG
+                img = Image.open(photo)
+                jpg_path = photo.rsplit('.', 1)[0] + '.jpg'
+                img.convert('RGB').save(jpg_path, 'JPEG')
                 os.remove(photo)
+                
+                await client(UploadProfilePhotoRequest(
+                    file=await client.upload_file(jpg_path)
+                ))
+                os.remove(jpg_path)
             
             await event.edit(f"✅ تم انتحال {target.first_name}!\n\nللعودة اكتب: رجوع")
         except Exception as e:
@@ -80,6 +87,9 @@ def register(client):
             original_profile["bio"] = full.full_user.about or ""
         
         bio = event.pattern_match.group(1)
+        # تيليجرام يسمح بـ 70 حرف فقط
+        if len(bio) > 70:
+            bio = bio[:70]
         await client(UpdateProfileRequest(about=bio))
         await event.edit("✅ تم تغيير الحالة")
 
@@ -93,10 +103,17 @@ def register(client):
         
         await event.edit("⏳ جاري تغيير الصورة...")
         photo = await reply.download_media()
-        await client(UploadProfilePhotoRequest(
-            file=await client.upload_file(photo)
-        ))
+        
+        # تحويل الصورة لـ JPG
+        img = Image.open(photo)
+        jpg_path = photo.rsplit('.', 1)[0] + '.jpg'
+        img.convert('RGB').save(jpg_path, 'JPEG')
         os.remove(photo)
+        
+        await client(UploadProfilePhotoRequest(
+            file=await client.upload_file(jpg_path)
+        ))
+        os.remove(jpg_path)
         await event.edit("✅ تم تغيير الصورة")
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'رجوع'))
