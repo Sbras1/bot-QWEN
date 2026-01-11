@@ -159,4 +159,31 @@ def register(client):
 📧 اليوزر: @{me.username or 'لا يوجد'}
 """)
 
+    # أمر حالة البوت بالإنجليزي
+    @client.on(events.NewMessage(incoming=True, pattern=r'/status'))
+    async def remote_status_en(event):
+        """حالة البوت - عن بُعد"""
+        sender = await event.get_sender()
+        if sender.id != owner_id:
+            return
+        
+        me = await client.get_me()
+        await event.reply(f"""
+**📊 حالة البوت**
+
+✅ البوت يعمل!
+👤 الحساب: {me.first_name}
+🆔 الآيدي: `{me.id}`
+📧 اليوزر: @{me.username or 'لا يوجد'}
+""")
+
+    # أمر ping للتجربة
+    @client.on(events.NewMessage(incoming=True, pattern=r'/ping'))
+    async def remote_ping(event):
+        """تجربة الاتصال"""
+        sender = await event.get_sender()
+        if sender.id != owner_id:
+            return
+        await event.reply("🏓 Pong! البوت يعمل")
+
     print(f"✅ التحكم عن بُعد مفعل للمالك: {owner_id}")
