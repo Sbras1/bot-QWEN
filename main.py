@@ -81,10 +81,21 @@ client = TelegramClient(StringSession(session_string), int(api_id) if api_id els
 @client.on(events.NewMessage(incoming=True))
 async def handle_incoming(event):
     sender = await event.get_sender()
-    name = sender.first_name if sender else "مجهول"
+    
+    # التحقق من نوع المرسل (مستخدم أو قناة)
+    if hasattr(sender, 'first_name'):
+        name = sender.first_name or "مجهول"
+        sender_id = sender.id
+    elif hasattr(sender, 'title'):
+        name = sender.title  # اسم القناة
+        sender_id = sender.id
+    else:
+        name = "مجهول"
+        sender_id = 0
+    
     message = event.raw_text
     
-    bot_stats["total_users"].add(sender.id)
+    bot_stats["total_users"].add(sender_id)
     bot_stats["messages_log"].append({"name": name, "text": message})
     
     if len(bot_stats["messages_log"]) > 50:
