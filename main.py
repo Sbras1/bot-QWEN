@@ -45,7 +45,7 @@ HTML_PAGE = """
                 <th>الاسم</th>
                 <th>الرسالة</th>
             </tr>
-            {% for msg in logs reversed %}
+            {% for msg in logs|reverse %}
             <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ msg.name }}</td>
