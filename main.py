@@ -3,11 +3,21 @@
 """
 import os
 import threading
+import logging
 from flask import Flask, render_template_string
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 import plugins
 import database as db
+
+# إعداد نظام السجلات
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    filename='bot.log',
+    filemode='a'
+)
+logger = logging.getLogger(__name__)
 
 # --- 1. إعدادات الموقع (Flask) ---
 app = Flask(__name__)
@@ -104,6 +114,25 @@ async def handle_incoming(event):
     
     if len(bot_stats["messages_log"]) > 50:
         bot_stats["messages_log"].pop(0)
+
+# أمر إرسال ملف السجلات
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.logs'))
+async def send_logs(event):
+    """إرسال ملف السجلات"""
+    chat = await event.get_chat()
+    
+    if os.path.exists('bot.log'):
+        await event.edit("📂 **جاري رفع ملف السجلات...**")
+        
+        await client.send_file(
+            chat,
+            'bot.log',
+            caption="📝 **ملف سجلات البوت (Logs)**\nيحتوي على تفاصيل التشغيل والأخطاء."
+        )
+        
+        await event.delete()
+    else:
+        await event.edit("❌ **لم يتم العثور على ملف سجلات (bot.log) بعد!**")
 
 # --- 3. التشغيل ---
 if __name__ == '__main__':
