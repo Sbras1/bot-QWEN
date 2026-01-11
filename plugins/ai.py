@@ -6,7 +6,7 @@ import httpx
 from telethon import events
 
 # رابط Gemini API
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 def register(client):
     """تسجيل أوامر الذكاء الاصطناعي"""
