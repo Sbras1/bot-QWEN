@@ -23,22 +23,28 @@ def register(client):
     
     owner_id = int(owner_id)
     
-    # أمر البحث عن بُعد
-    @client.on(events.NewMessage(incoming=True, pattern=r'\.بحث (\d+)'))
+    # أمر البحث عن بُعد (بالآيدي أو اليوزر)
+    @client.on(events.NewMessage(incoming=True, pattern=r'\.بحث (.+)'))
     async def remote_search(event):
-        """البحث عن شخص بالآيدي - عن بُعد"""
+        """البحث عن شخص بالآيدي أو اليوزر - عن بُعد"""
         sender = await event.get_sender()
         if sender.id != owner_id:
             return  # تجاهل إذا ليس المالك
         
-        user_id = event.pattern_match.group(1)
+        query = event.pattern_match.group(1).strip()
         msg = await event.reply("🔍 **جاري البحث... انتظر 5 ثواني**")
         
         # تأخير 5 ثواني
         await asyncio.sleep(5)
         
         try:
-            user = await client.get_entity(int(user_id))
+            # البحث بالآيدي أو اليوزر
+            if query.isdigit():
+                user = await client.get_entity(int(query))
+            else:
+                # إزالة @ إذا موجودة
+                username = query.replace("@", "")
+                user = await client.get_entity(username)
             
             # جمع المعلومات
             name = getattr(user, 'first_name', '') or ''
@@ -133,7 +139,9 @@ def register(client):
 **🎮 أوامر التحكم عن بُعد**
 
 **🔍 البحث:**
-• `.بحث 123456789` - البحث عن شخص بالآيدي
+• `.بحث 123456789` - البحث بالآيدي
+• `.بحث username` - البحث باليوزر
+• `.بحث @username` - البحث باليوزر
 
 **🧠 الذكاء الاصطناعي:**
 • `.ذكاء سؤالك` - اسأل الذكاء الاصطناعي
