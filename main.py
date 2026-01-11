@@ -69,6 +69,9 @@ def dashboard():
                                   logs=bot_stats["messages_log"])
 
 def run_web_server():
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
     app.run(host='0.0.0.0', port=10000)
 
 # --- 2. إعدادات البوت ---
