@@ -3,6 +3,7 @@
 يسمح للمالك بالتحكم بالبوت من حساب آخر
 """
 import os
+import asyncio
 import httpx
 from telethon import events
 from telethon.tl.functions.users import GetFullUserRequest
@@ -31,7 +32,10 @@ def register(client):
             return  # تجاهل إذا ليس المالك
         
         user_id = event.pattern_match.group(1)
-        await event.reply("🔍 جاري البحث...")
+        msg = await event.reply("🔍 **جاري البحث... انتظر 5 ثواني**")
+        
+        # تأخير 5 ثواني
+        await asyncio.sleep(5)
         
         try:
             user = await client.get_entity(int(user_id))
@@ -80,7 +84,10 @@ def register(client):
             return
         
         question = event.pattern_match.group(1)
-        await event.reply("🤔 جاري التفكير...")
+        msg = await event.reply("🤔 **جاري التفكير... انتظر 5 ثواني**")
+        
+        # تأخير 5 ثواني
+        await asyncio.sleep(5)
         
         try:
             async with httpx.AsyncClient() as http:
@@ -107,12 +114,12 @@ def register(client):
                     answer = data["choices"][0]["message"]["content"]
                     if len(answer) > 4000:
                         answer = answer[:4000] + "..."
-                    await event.reply(f"**🤖 الذكاء الاصطناعي:**\n\n{answer}")
+                    await msg.edit(f"**🤖 الذكاء الاصطناعي:**\n\n{answer}")
                 else:
                     error = data.get("error", {}).get("message", "خطأ غير معروف")
-                    await event.reply(f"❌ خطأ: {error}")
+                    await msg.edit(f"❌ خطأ: {error}")
         except Exception as e:
-            await event.reply(f"❌ خطأ: {str(e)}")
+            await msg.edit(f"❌ خطأ: {str(e)}")
     
     # أمر الأوامر عن بُعد
     @client.on(events.NewMessage(incoming=True, pattern=r'\.اوامر'))
@@ -149,8 +156,11 @@ def register(client):
         if sender.id != owner_id:
             return
         
+        msg = await event.reply("📊 **جاري التحقق... انتظر 5 ثواني**")
+        await asyncio.sleep(5)
+        
         me = await client.get_me()
-        await event.reply(f"""
+        await msg.edit(f"""
 **📊 حالة البوت**
 
 ✅ البوت يعمل!
@@ -167,8 +177,11 @@ def register(client):
         if sender.id != owner_id:
             return
         
+        msg = await event.reply("📊 **Checking... wait 5 seconds**")
+        await asyncio.sleep(5)
+        
         me = await client.get_me()
-        await event.reply(f"""
+        await msg.edit(f"""
 **📊 حالة البوت**
 
 ✅ البوت يعمل!
@@ -184,6 +197,8 @@ def register(client):
         sender = await event.get_sender()
         if sender.id != owner_id:
             return
-        await event.reply("🏓 Pong! البوت يعمل")
+        msg = await event.reply("🏓 **Pong! جاري التحقق...**")
+        await asyncio.sleep(5)
+        await msg.edit("🏓 **Pong! البوت يعمل بنجاح ✅**")
 
     print(f"✅ التحكم عن بُعد مفعل للمالك: {owner_id}")
