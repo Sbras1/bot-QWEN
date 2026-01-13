@@ -9,25 +9,21 @@ from telethon.tl.functions.messages import GetCommonChatsRequest
 def register(client):
     """تسجيل أوامر البحث"""
     
-    @client.on(events.NewMessage(outgoing=True, pattern=r'بحث (\d+)'))
-    async def search_command(event):
-        """البحث عن شخص بالـ ID"""
-        user_id = int(event.pattern_match.group(1))
-        
+    async def do_search(event, query):
+        """دالة البحث الموحدة"""
         await event.edit("⏳ جاري البحث...")
-        
-        # انتظار 5 ثواني
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
         
         try:
-            # جلب معلومات المستخدم
-            user = await client.get_entity(user_id)
+            # جلب معلومات المستخدم (بالآيدي أو اليوزر)
+            user = await client.get_entity(query)
             full = await client(GetFullUserRequest(user))
             
             # تجميع المعلومات الأساسية
             name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "بدون اسم"
             username = f"@{user.username}" if user.username else "لا يوجد"
             bio = full.full_user.about or "لا يوجد"
+            user_id = user.id
             
             # المجموعات المشتركة
             try:
@@ -89,6 +85,38 @@ def register(client):
                 await event.respond(file=photos[0])
                 
         except ValueError:
-            await event.edit("❌ لم يتم العثور على المستخدم")
+            await event.edit("""❌ **لم يتم العثور على المستخدم**
+
+💡 **ملاحظة:** البحث بالآيدي يعمل فقط إذا:
+• تفاعلت معه من قبل
+• في مجموعة مشتركة معك
+• بحثت عنه باليوزر أولاً
+
+جرب: `بحث @username`""")
         except Exception as e:
-            await event.edit(f"❌ خطأ: {str(e)}")
+            error_msg = str(e)
+            if "Could not find the input entity" in error_msg:
+                await event.edit("""❌ **لم أجد هذا الشخص**
+
+💡 **السبب:** لم تتفاعل مع هذا الحساب من قبل.
+
+**الحل:** ابحث باليوزر أولاً:
+`بحث @username`
+
+ثم يمكنك البحث بالآيدي لاحقاً.""")
+            else:
+                await event.edit(f"❌ خطأ: {error_msg}")
+    
+    # البحث بالآيدي
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^بحث (\d+)$'))
+    async def search_by_id(event):
+        """البحث عن شخص بالـ ID"""
+        user_id = int(event.pattern_match.group(1))
+        await do_search(event, user_id)
+    
+    # البحث باليوزر
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^بحث @?([a-zA-Z][a-zA-Z0-9_]{3,})$'))
+    async def search_by_username(event):
+        """البحث عن شخص باليوزر"""
+        username = event.pattern_match.group(1)
+        await do_search(event, username)
