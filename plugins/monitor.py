@@ -8,6 +8,8 @@ from datetime import datetime
 from telethon import events
 from telethon.tl.functions.messages import CreateChatRequest
 from telethon.tl.functions.users import GetFullUserRequest
+from telethon.tl.functions.channels import GetParticipantsRequest
+from telethon.tl.types import ChannelParticipantsSearch
 import database as db
 
 def register(client):
@@ -127,6 +129,201 @@ def register(client):
 
 ملاحظة: البيانات المحفوظة لم تُحذف.
 """)
+    
+    # ═══════════════════════════════════════════════════════════
+    # أمر فحص جميع الأعضاء
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^فحص اعضاء$'))
+    async def scan_all_members(event):
+        """فحص وحفظ جميع أعضاء المجموعة"""
+        chat_id = event.chat_id
+        
+        # التحقق من المجموعة
+        group_data = db.get_monitored_group(chat_id)
+        if not group_data:
+            group_data = db.get_monitored_group_by_log_id(chat_id)
+            if group_data:
+                chat_id = group_data.get('group_id')
+            else:
+                await event.edit("❌ هذه المجموعة غير مراقبة! فعّل المراقبة أولاً بأمر `مراقبة`")
+                return
+        
+        await event.edit("⏳ **جاري فحص الأعضاء...**\nقد يستغرق بعض الوقت...")
+        
+        try:
+            # جلب جميع الأعضاء
+            all_participants = []
+            offset = 0
+            limit = 100
+            
+            while True:
+                participants = await client(GetParticipantsRequest(
+                    chat_id,
+                    ChannelParticipantsSearch(''),
+                    offset,
+                    limit,
+                    hash=0
+                ))
+                
+                if not participants.users:
+                    break
+                
+                all_participants.extend(participants.users)
+                offset += len(participants.users)
+                
+                # تحديث الرسالة كل 200 عضو
+                if offset % 200 == 0:
+                    await event.edit(f"⏳ **جاري فحص الأعضاء...**\nتم جلب {offset} عضو...")
+                
+                # تأخير لتجنب الحظر
+                await asyncio.sleep(0.5)
+                
+                if len(participants.users) < limit:
+                    break
+            
+            # حفظ الأعضاء
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+            today = datetime.now().strftime('%Y-%m-%d')
+            saved_count = 0
+            new_count = 0
+            
+            for user in all_participants:
+                if user.bot:  # تجاهل البوتات
+                    continue
+                
+                user_id = user.id
+                first_name = getattr(user, 'first_name', '') or ''
+                last_name = getattr(user, 'last_name', '') or ''
+                full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
+                username = getattr(user, 'username', '') or ''
+                
+                # التحقق إذا موجود
+                existing = db.get_member(chat_id, user_id)
+                
+                if existing:
+                    # تحديث فقط
+                    existing['full_name'] = full_name
+                    existing['first_name'] = first_name
+                    existing['last_name'] = last_name
+                    existing['username'] = username
+                    existing['last_seen'] = now
+                    db.save_member(chat_id, user_id, existing)
+                else:
+                    # عضو جديد
+                    new_member = {
+                        'user_id': user_id,
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'full_name': full_name,
+                        'username': username,
+                        'first_seen': now,
+                        'last_seen': now,
+                        'message_count': 0,
+                        'name_history': [{'name': full_name, 'date': today}],
+                        'username_history': [{'username': username, 'date': today}] if username else []
+                    }
+                    db.save_member(chat_id, user_id, new_member)
+                    new_count += 1
+                
+                saved_count += 1
+            
+            await event.edit(f"""
+✅ **تم فحص الأعضاء بنجاح!**
+
+📊 **النتائج:**
+👥 إجمالي الأعضاء: {len(all_participants)}
+✅ تم حفظ/تحديث: {saved_count}
+🆕 أعضاء جدد: {new_count}
+🤖 بوتات (تم تجاهلها): {len(all_participants) - saved_count}
+""")
+            
+            # إرسال إشعار في مجموعة المتغيرات
+            log_group_id = group_data.get('log_group_id')
+            if log_group_id:
+                try:
+                    await client.send_message(log_group_id, f"""
+📊 **تم فحص الأعضاء**
+
+👥 إجمالي: {len(all_participants)}
+🆕 جدد: {new_count}
+⏰ {now}
+""")
+                except:
+                    pass
+                    
+        except Exception as e:
+            await event.edit(f"❌ خطأ في فحص الأعضاء: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════
+    # مراقبة الانضمام للمجموعة
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.ChatAction())
+    async def on_user_join(event):
+        """حفظ الأعضاء عند الانضمام"""
+        # فقط عند الانضمام
+        if not event.user_joined and not event.user_added:
+            return
+        
+        chat_id = event.chat_id
+        
+        # التحقق إذا المجموعة مراقبة
+        group_data = db.get_monitored_group(chat_id)
+        if not group_data or not group_data.get('is_active'):
+            return
+        
+        try:
+            user = await event.get_user()
+            if not user or user.bot:
+                return
+            
+            user_id = user.id
+            first_name = getattr(user, 'first_name', '') or ''
+            last_name = getattr(user, 'last_name', '') or ''
+            full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
+            username = getattr(user, 'username', '') or ''
+            
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # التحقق إذا موجود
+            existing = db.get_member(chat_id, user_id)
+            
+            if not existing:
+                # عضو جديد
+                new_member = {
+                    'user_id': user_id,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'full_name': full_name,
+                    'username': username,
+                    'first_seen': now,
+                    'last_seen': now,
+                    'message_count': 0,
+                    'joined_at': now,
+                    'name_history': [{'name': full_name, 'date': today}],
+                    'username_history': [{'username': username, 'date': today}] if username else []
+                }
+                db.save_member(chat_id, user_id, new_member)
+                
+                # إرسال إشعار
+                log_group_id = group_data.get('log_group_id')
+                if log_group_id:
+                    username_text = f"@{username}" if username else "بدون يوزر"
+                    alert = f"""
+🚪 **انضمام جديد**
+━━━━━━━━━━━━━━
+
+🆔 `{user_id}`
+👤 {full_name}
+📧 {username_text}
+⏰ {now}
+"""
+                    try:
+                        await client.send_message(log_group_id, alert)
+                    except:
+                        pass
+        except:
+            pass
     
     # ═══════════════════════════════════════════════════════════
     # أمر عرض المجموعات المراقبة
