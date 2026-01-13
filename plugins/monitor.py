@@ -52,8 +52,26 @@ def register(client):
                 title=log_group_title
             ))
             
-            log_chat = result.chats[0]
-            log_group_id = log_chat.id
+            # الحصول على آيدي المجموعة من updates
+            log_group_id = None
+            if hasattr(result, 'updates'):
+                for update in result.updates:
+                    if hasattr(update, 'message') and hasattr(update.message, 'peer_id'):
+                        if hasattr(update.message.peer_id, 'chat_id'):
+                            log_group_id = update.message.peer_id.chat_id
+                            break
+            
+            # طريقة بديلة: البحث في الدردشات الأخيرة
+            if not log_group_id:
+                dialogs = await client.get_dialogs(limit=5)
+                for dialog in dialogs:
+                    if hasattr(dialog, 'title') and dialog.title == log_group_title:
+                        log_group_id = dialog.id
+                        break
+            
+            if not log_group_id:
+                await event.edit("❌ تم إنشاء المجموعة لكن لم أستطع الحصول على آيديها. حاول مرة أخرى.")
+                return
             
             # حفظ في قاعدة البيانات
             db.save_monitored_group(chat_id, {
