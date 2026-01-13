@@ -89,25 +89,39 @@ def register(client):
                 await event.respond(file=photos[0])
                 
         except ValueError:
-            await event.edit("""❌ **لم يتم العثور على المستخدم**
-
-💡 **ملاحظة:** البحث بالآيدي يعمل فقط إذا:
-• تفاعلت معه من قبل
-• في مجموعة مشتركة معك
-• بحثت عنه باليوزر أولاً
-
-جرب: `بحث @username`""")
-        except Exception as e:
-            error_msg = str(e)
-            if "Could not find the input entity" in error_msg:
-                await event.edit("""❌ **لم أجد هذا الشخص**
+            # إذا كان البحث بالآيدي، نعطي الرابط المباشر
+            if isinstance(query, int):
+                direct_link = f"tg://openmessage?user_id={query}"
+                await event.edit(f"""⚠️ **لم أستطع جلب المعلومات**
 
 💡 **السبب:** لم تتفاعل مع هذا الحساب من قبل.
 
-**الحل:** ابحث باليوزر أولاً:
-`بحث @username`
+🔗 **لكن يمكنك فتح المحادثة مباشرة:**
+👉 [اضغط هنا]({direct_link})
 
-ثم يمكنك البحث بالآيدي لاحقاً.""")
+_(إذا كان الحساب موجود، ستفتح المحادثة)_""")
+            else:
+                await event.edit("""❌ **لم يتم العثور على المستخدم**
+
+💡 تأكد من صحة اليوزرنيم وحاول مرة أخرى.""")
+        except Exception as e:
+            error_msg = str(e)
+            if "Could not find the input entity" in error_msg:
+                # إذا كان البحث بالآيدي، نعطي الرابط المباشر
+                if isinstance(query, int):
+                    direct_link = f"tg://openmessage?user_id={query}"
+                    await event.edit(f"""⚠️ **لم أستطع جلب المعلومات**
+
+💡 **السبب:** لم تتفاعل مع هذا الحساب من قبل.
+
+🔗 **لكن يمكنك فتح المحادثة مباشرة:**
+👉 [اضغط هنا]({direct_link})
+
+_(إذا كان الحساب موجود، ستفتح المحادثة)_""")
+                else:
+                    await event.edit("""❌ **لم أجد هذا الشخص**
+
+💡 تأكد من صحة اليوزرنيم وحاول مرة أخرى.""")
             else:
                 await event.edit(f"❌ خطأ: {error_msg}")
     
