@@ -47,27 +47,20 @@ def register(client):
             log_group_title = f"متغيرات مجموعة {chat_title}"
             
             # إنشاء المجموعة
-            result = await client(CreateChatRequest(
+            await client(CreateChatRequest(
                 users=[me.id],
                 title=log_group_title
             ))
             
-            # الحصول على آيدي المجموعة من updates
-            log_group_id = None
-            if hasattr(result, 'updates'):
-                for update in result.updates:
-                    if hasattr(update, 'message') and hasattr(update.message, 'peer_id'):
-                        if hasattr(update.message.peer_id, 'chat_id'):
-                            log_group_id = update.message.peer_id.chat_id
-                            break
+            # انتظار قليل ثم البحث عن المجموعة في الدردشات
+            await asyncio.sleep(1)
             
-            # طريقة بديلة: البحث في الدردشات الأخيرة
-            if not log_group_id:
-                dialogs = await client.get_dialogs(limit=5)
-                for dialog in dialogs:
-                    if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                        log_group_id = dialog.id
-                        break
+            log_group_id = None
+            dialogs = await client.get_dialogs(limit=10)
+            for dialog in dialogs:
+                if hasattr(dialog, 'title') and dialog.title == log_group_title:
+                    log_group_id = dialog.id
+                    break
             
             if not log_group_id:
                 await event.edit("❌ تم إنشاء المجموعة لكن لم أستطع الحصول على آيديها. حاول مرة أخرى.")
