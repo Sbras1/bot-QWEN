@@ -57,6 +57,9 @@ def register(client):
             is_fake = "⚠️ نعم!" if getattr(user, 'fake', False) else "❌"
             is_restricted = "⚠️ نعم" if getattr(user, 'restricted', False) else "❌"
             
+            # رابط المحادثة المباشر
+            direct_link = f"tg://openmessage?user_id={user_id}"
+            
             # عرض النتائج
             result = f"""
 **🔍 نتائج البحث**
@@ -65,6 +68,7 @@ def register(client):
 🆔 **الآيدي:** `{user_id}`
 📧 **اليوزر:** {username}
 📝 **البايو:** {bio}
+🔗 **رابط مباشر:** [اضغط هنا]({direct_link})
 
 **📊 الحالة:**
 {status}
