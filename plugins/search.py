@@ -4,6 +4,7 @@
 import asyncio
 from telethon import events
 from telethon.tl.functions.users import GetFullUserRequest
+from telethon.tl.functions.messages import GetCommonChatsRequest
 
 def register(client):
     """تسجيل أوامر البحث"""
@@ -23,10 +24,17 @@ def register(client):
             user = await client.get_entity(user_id)
             full = await client(GetFullUserRequest(user))
             
-            # تجميع المعلومات
-            name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+            # تجميع المعلومات الأساسية
+            name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "بدون اسم"
             username = f"@{user.username}" if user.username else "لا يوجد"
             bio = full.full_user.about or "لا يوجد"
+            
+            # المجموعات المشتركة
+            try:
+                common = await client(GetCommonChatsRequest(user_id=user, max_id=0, limit=100))
+                common_count = len(common.chats)
+            except:
+                common_count = 0
             
             # تحديد الحالة
             if user.bot:
@@ -46,6 +54,13 @@ def register(client):
             else:
                 status = "⚫ غير معروف"
             
+            # معلومات إضافية
+            is_premium = "✅" if getattr(user, 'premium', False) else "❌"
+            is_verified = "✅" if getattr(user, 'verified', False) else "❌"
+            is_scam = "⚠️ نعم!" if getattr(user, 'scam', False) else "❌"
+            is_fake = "⚠️ نعم!" if getattr(user, 'fake', False) else "❌"
+            is_restricted = "⚠️ نعم" if getattr(user, 'restricted', False) else "❌"
+            
             # عرض النتائج
             result = f"""
 **🔍 نتائج البحث**
@@ -54,7 +69,17 @@ def register(client):
 🆔 **الآيدي:** `{user_id}`
 📧 **اليوزر:** {username}
 📝 **البايو:** {bio}
+
+**📊 الحالة:**
 {status}
+
+**ℹ️ معلومات إضافية:**
+💎 بريميوم: {is_premium}
+✅ موثق: {is_verified}
+🚫 سكام: {is_scam}
+🎭 مزيف: {is_fake}
+⛔ مقيد: {is_restricted}
+👥 مجموعات مشتركة: {common_count}
 """
             await event.edit(result)
             
