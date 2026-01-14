@@ -1070,5 +1070,248 @@ def register(client):
                 
             except Exception as e:
                 await msg.edit(f"❌ خطأ: {str(e)}")
+        
+        @client.on(events.NewMessage(incoming=True, pattern=r'^\.الغاء (-?\d+)$'))
+        async def remote_disable_monitoring(event):
+            """إلغاء المراقبة عن بُعد"""
+            sender = await event.get_sender()
+            if sender.id != owner_id:
+                return
+            
+            target_chat_id = int(event.pattern_match.group(1))
+            
+            group_data = db.get_monitored_group(target_chat_id)
+            if not group_data:
+                await event.reply("❌ هذه المجموعة غير مراقبة!")
+                return
+            
+            db.update_monitored_group(target_chat_id, {'is_active': False})
+            
+            await event.reply(f"""
+✅ **تم إلغاء المراقبة**
+
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+🆔 الآيدي: `{target_chat_id}`
+
+ملاحظة: البيانات المحفوظة لم تُحذف.
+""")
+        
+        @client.on(events.NewMessage(incoming=True, pattern=r'^\.اصلاح (-?\d+)$'))
+        async def remote_fix_monitoring(event):
+            """إصلاح مجموعة المتغيرات عن بُعد"""
+            sender = await event.get_sender()
+            if sender.id != owner_id:
+                return
+            
+            target_chat_id = int(event.pattern_match.group(1))
+            
+            group_data = db.get_monitored_group(target_chat_id)
+            if not group_data:
+                await event.reply("❌ هذه المجموعة غير مراقبة!")
+                return
+            
+            msg = await event.reply("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
+            
+            try:
+                chat_title = group_data.get('group_title', 'غير معروف')
+                me = await client.get_me()
+                log_group_title = f"متغيرات مجموعة {chat_title}"
+                
+                await client(CreateChatRequest(
+                    users=[me.id],
+                    title=log_group_title
+                ))
+                
+                await asyncio.sleep(1)
+                
+                log_group_id = None
+                dialogs = await client.get_dialogs(limit=10)
+                for dialog in dialogs:
+                    if hasattr(dialog, 'title') and dialog.title == log_group_title:
+                        log_group_id = dialog.id
+                        break
+                
+                if not log_group_id:
+                    await msg.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
+                    return
+                
+                db.update_monitored_group(target_chat_id, {
+                    'log_group_id': log_group_id,
+                    'log_group_title': log_group_title,
+                    'is_active': True
+                })
+                
+                # رسالة ترحيبية
+                welcome_msg = f"""
+🔧 **تم إصلاح مجموعة المتغيرات**
+
+📍 المجموعة المراقبة: {chat_title}
+🆔 آيدي المجموعة: `{target_chat_id}`
+⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+البيانات القديمة محفوظة ✅
+"""
+                await client.send_message(log_group_id, welcome_msg)
+                
+                await msg.edit(f"""
+✅ **تم الإصلاح بنجاح!**
+
+📍 المجموعة: {chat_title}
+📂 مجموعة المتغيرات الجديدة: {log_group_title}
+""")
+                
+            except Exception as e:
+                await msg.edit(f"❌ خطأ: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════
+    # أوامر إلغاء وإصلاح بالآيدي (للحساب)
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^الغاء (-?\d+)$'))
+    async def disable_monitoring_by_id(event):
+        """إلغاء المراقبة بالآيدي"""
+        target_chat_id = int(event.pattern_match.group(1))
+        
+        group_data = db.get_monitored_group(target_chat_id)
+        if not group_data:
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
+        
+        db.update_monitored_group(target_chat_id, {'is_active': False})
+        
+        await event.edit(f"""
+✅ **تم إلغاء المراقبة**
+
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+🆔 الآيدي: `{target_chat_id}`
+
+ملاحظة: البيانات المحفوظة لم تُحذف.
+""")
+    
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^اصلاح مراقبة$'))
+    async def fix_monitoring(event):
+        """إصلاح مجموعة المتغيرات"""
+        chat_id = event.chat_id
+        
+        group_data = db.get_monitored_group(chat_id)
+        if not group_data:
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
+        
+        await event.edit("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
+        
+        try:
+            chat = await event.get_chat()
+            chat_title = getattr(chat, 'title', 'مجموعة')
+            me = await client.get_me()
+            log_group_title = f"متغيرات مجموعة {chat_title}"
+            
+            await client(CreateChatRequest(
+                users=[me.id],
+                title=log_group_title
+            ))
+            
+            await asyncio.sleep(1)
+            
+            log_group_id = None
+            dialogs = await client.get_dialogs(limit=10)
+            for dialog in dialogs:
+                if hasattr(dialog, 'title') and dialog.title == log_group_title:
+                    log_group_id = dialog.id
+                    break
+            
+            if not log_group_id:
+                await event.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
+                return
+            
+            db.update_monitored_group(chat_id, {
+                'log_group_id': log_group_id,
+                'log_group_title': log_group_title,
+                'is_active': True
+            })
+            
+            # رسالة ترحيبية
+            welcome_msg = f"""
+🔧 **تم إصلاح مجموعة المتغيرات**
+
+📍 المجموعة المراقبة: {chat_title}
+🆔 آيدي المجموعة: `{chat_id}`
+⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+البيانات القديمة محفوظة ✅
+"""
+            await client.send_message(log_group_id, welcome_msg)
+            
+            await event.edit(f"""
+✅ **تم الإصلاح بنجاح!**
+
+📍 المجموعة: {chat_title}
+📂 مجموعة المتغيرات الجديدة: {log_group_title}
+""")
+            
+        except Exception as e:
+            await event.edit(f"❌ خطأ: {str(e)}")
+    
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^اصلاح (-?\d+)$'))
+    async def fix_monitoring_by_id(event):
+        """إصلاح مجموعة المتغيرات بالآيدي"""
+        target_chat_id = int(event.pattern_match.group(1))
+        
+        group_data = db.get_monitored_group(target_chat_id)
+        if not group_data:
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
+        
+        await event.edit("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
+        
+        try:
+            chat_title = group_data.get('group_title', 'غير معروف')
+            me = await client.get_me()
+            log_group_title = f"متغيرات مجموعة {chat_title}"
+            
+            await client(CreateChatRequest(
+                users=[me.id],
+                title=log_group_title
+            ))
+            
+            await asyncio.sleep(1)
+            
+            log_group_id = None
+            dialogs = await client.get_dialogs(limit=10)
+            for dialog in dialogs:
+                if hasattr(dialog, 'title') and dialog.title == log_group_title:
+                    log_group_id = dialog.id
+                    break
+            
+            if not log_group_id:
+                await event.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
+                return
+            
+            db.update_monitored_group(target_chat_id, {
+                'log_group_id': log_group_id,
+                'log_group_title': log_group_title,
+                'is_active': True
+            })
+            
+            # رسالة ترحيبية
+            welcome_msg = f"""
+🔧 **تم إصلاح مجموعة المتغيرات**
+
+📍 المجموعة المراقبة: {chat_title}
+🆔 آيدي المجموعة: `{target_chat_id}`
+⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+البيانات القديمة محفوظة ✅
+"""
+            await client.send_message(log_group_id, welcome_msg)
+            
+            await event.edit(f"""
+✅ **تم الإصلاح بنجاح!**
+
+📍 المجموعة: {chat_title}
+📂 مجموعة المتغيرات الجديدة: {log_group_title}
+""")
+            
+        except Exception as e:
+            await event.edit(f"❌ خطأ: {str(e)}")
     
     print("✅ تم تحميل نظام المراقبة")
