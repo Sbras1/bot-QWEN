@@ -43,10 +43,20 @@ def register(client):
 """
         await event.edit(help_text)
     
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.اوامر$'))
-    async def owner_help_command(event):
-        """عرض قائمة أوامر Owner"""
-        help_text = """
+    # أوامر Owner عن بُعد
+    import os
+    owner_id = os.environ.get('OWNER_ID')
+    if owner_id:
+        owner_id = int(owner_id)
+        
+        @client.on(events.NewMessage(incoming=True, pattern=r'^\.اوامر$'))
+        async def owner_help_command(event):
+            """عرض قائمة أوامر Owner - عن بُعد"""
+            sender = await event.get_sender()
+            if sender.id != owner_id:
+                return
+            
+            help_text = """
 **🎮 أوامر Owner (عن بُعد)**
 
 **👁️ المراقبة:**
@@ -71,4 +81,4 @@ def register(client):
 **❓ مساعدة:**
 • `.اوامر` - أوامر Owner
 """
-        await event.edit(help_text)
+            await event.reply(help_text)
