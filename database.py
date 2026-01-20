@@ -161,12 +161,16 @@ def get_member_info(user_id):
     """جلب معلومات عضو من أي مجموعة"""
     try:
         db = get_db()
-        # البحث في كل المجموعات
-        groups = db.collection('members').get()
-        for group in groups:
-            doc = db.collection('members').document(group.id).collection('users').document(str(user_id)).get()
-            if doc.exists:
-                return doc.to_dict()
+        # جلب قائمة المجموعات المراقبة أولاً
+        monitored_groups = db.collection('monitored_groups').get()
+        for group_doc in monitored_groups:
+            group_data = group_doc.to_dict()
+            group_id = group_data.get('group_id')
+            if group_id:
+                # البحث عن العضو في هذه المجموعة
+                doc = db.collection('members').document(str(group_id)).collection('users').document(str(user_id)).get()
+                if doc.exists:
+                    return doc.to_dict()
     except Exception as e:
         print(f"❌ خطأ في البحث عن العضو: {e}")
     return None
