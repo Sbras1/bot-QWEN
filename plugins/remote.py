@@ -127,41 +127,6 @@ def register(client):
         except Exception as e:
             await msg.edit(f"❌ خطأ: {str(e)}")
     
-    # أمر الأوامر عن بُعد
-    @client.on(events.NewMessage(incoming=True, pattern=r'\.اوامر'))
-    async def remote_help(event):
-        """عرض الأوامر - عن بُعد"""
-        sender = await event.get_sender()
-        if sender.id != owner_id:
-            return
-        
-        help_text = """
-**🎮 أوامر التحكم عن بُعد**
-
-**�️ المراقبة:**
-• `.المجموعات` - عرض المجموعات المراقبة
-• `.اعضاء -100123` - عرض أعضاء مجموعة
-• `.عضو 123456` - تفاصيل عضو
-• `.سجل 123456` - سجل تغييرات عضو
-
-**�🔍 البحث:**
-• `.بحث 123456789` - البحث بالآيدي
-• `.بحث username` - البحث باليوزر
-• `.بحث @username` - البحث باليوزر
-
-**🧠 الذكاء الاصطناعي:**
-• `.ذكاء سؤالك` - اسأل الذكاء الاصطناعي
-
-**📊 الحالة:**
-• `.حالة` - معرفة حالة البوت
-
-**❓ مساعدة:**
-• `.اوامر` - عرض هذه القائمة
-
-⚠️ **ملاحظة:** الأوامر تبدأ بنقطة (.)
-"""
-        await event.reply(help_text)
-    
     # أمر حالة البوت
     @client.on(events.NewMessage(incoming=True, pattern=r'\.حالة'))
     async def remote_status(event):
