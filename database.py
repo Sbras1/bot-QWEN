@@ -158,19 +158,13 @@ def get_group_members(group_id):
 
 # جلب معلومات عضو من أي مجموعة
 def get_member_info(user_id):
-    """جلب معلومات عضو من أي مجموعة"""
+    """جلب معلومات عضو من أي مجموعة - بحث سريع"""
     try:
         db = get_db()
-        # جلب قائمة المجموعات المراقبة أولاً
-        monitored_groups = db.collection('monitored_groups').get()
-        for group_doc in monitored_groups:
-            group_data = group_doc.to_dict()
-            group_id = group_data.get('group_id')
-            if group_id:
-                # البحث عن العضو في هذه المجموعة
-                doc = db.collection('members').document(str(group_id)).collection('users').document(str(user_id)).get()
-                if doc.exists:
-                    return doc.to_dict()
+        # استخدام Collection Group Query للبحث في كل subcollections بضربة واحدة
+        docs = db.collection_group('users').where('user_id', '==', int(user_id)).limit(1).get()
+        for doc in docs:
+            return doc.to_dict()
     except Exception as e:
         print(f"❌ خطأ في البحث عن العضو: {e}")
     return None
