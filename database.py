@@ -98,6 +98,34 @@ def get_log_group():
         pass
     return None
 
+def get_group_members(group_id):
+    """جلب أعضاء قروب معين من البنية القديمة والجديدة"""
+    members = {}
+    db = get_db()
+    group_id_str = str(group_id).replace('-100', '-100')  # تنظيف الآيدي
+    
+    try:
+        # 1. جلب من البنية القديمة members/{group_id}/users
+        users = db.collection('members').document(str(group_id)).collection('users').get()
+        for user in users:
+            data = user.to_dict()
+            user_id = str(data.get('user_id', user.id))
+            members[user_id] = data
+        
+        # 2. جلب من all_members اللي عندهم هذا القروب
+        all_docs = db.collection('all_members').get()
+        for doc in all_docs:
+            data = doc.to_dict()
+            groups_seen = data.get('groups_seen', {})
+            if str(group_id) in groups_seen or str(abs(int(group_id))) in groups_seen:
+                user_id = str(data.get('user_id', doc.id))
+                # الأولوية للبيانات الجديدة
+                members[user_id] = data
+    except Exception as e:
+        print(f"❌ خطأ في جلب أعضاء القروب: {e}")
+    
+    return list(members.values())
+
 def get_all_members():
     """جلب كل الأعضاء من البنية الجديدة والقديمة"""
     all_members = {}

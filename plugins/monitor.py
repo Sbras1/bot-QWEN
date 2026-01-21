@@ -402,6 +402,79 @@ def register(client):
         except Exception as e:
             await event.edit(f"❌ خطأ: {e}")
     
+    @client.on(events.NewMessage(pattern=r'^\.تصدير (-?\d+)$'))
+    async def export_group_members(event):
+        """تصدير أعضاء قروب معين"""
+        if not event.out:
+            return
+        
+        group_id = event.pattern_match.group(1)
+        await event.edit(f"⏳ **جاري تصدير أعضاء القروب {group_id}...**")
+        
+        try:
+            members = db.get_group_members(group_id)
+            
+            if not members:
+                await event.edit(f"❌ لا يوجد أعضاء محفوظين للقروب {group_id}")
+                return
+            
+            # إنشاء محتوى الملف
+            content = f"📊 تصدير أعضاء القروب: {group_id}\n"
+            content += f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+            content += f"👥 العدد: {len(members)}\n"
+            content += "━" * 40 + "\n\n"
+            
+            for m in members:
+                user_id = m.get('user_id', '؟')
+                full_name = m.get('full_name', 'بدون اسم')
+                username = m.get('username', '')
+                username_text = f"@{username}" if username else "بدون يوزر"
+                first_seen = m.get('first_seen', '؟')
+                last_seen = m.get('last_seen', '؟')
+                
+                content += f"🆔 {user_id}\n"
+                content += f"👤 {full_name}\n"
+                content += f"📧 {username_text}\n"
+                content += f"📅 أول ظهور: {first_seen}\n"
+                content += f"📅 آخر ظهور: {last_seen}\n"
+                
+                # تاريخ الأسماء
+                name_history = m.get('name_history', [])
+                if name_history and len(name_history) > 1:
+                    content += "\n📝 تاريخ الأسماء:\n"
+                    for entry in name_history:
+                        content += f"  • {entry.get('name', '؟')} ({entry.get('date', '؟')})\n"
+                
+                # تاريخ اليوزرات
+                username_history = m.get('username_history', [])
+                if username_history and len(username_history) > 1:
+                    content += "\n📧 تاريخ اليوزرات:\n"
+                    for entry in username_history:
+                        uname = entry.get('username') or 'بدون'
+                        content += f"  • @{uname} ({entry.get('date', '؟')})\n"
+                
+                content += "\n" + "━" * 40 + "\n\n"
+            
+            # حفظ الملف
+            filename = f"group_{group_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # إرسال الملف
+            await event.delete()
+            await client.send_file(
+                event.chat_id,
+                filename,
+                caption=f"📊 **تصدير أعضاء القروب**\n🆔 `{group_id}`\n👥 العدد: **{len(members)}**"
+            )
+            
+            # حذف الملف
+            import os
+            os.remove(filename)
+            
+        except Exception as e:
+            await event.edit(f"❌ خطأ: {e}")
+    
     # ═══════════════════════════════════════════════════════════
     # أوامر الاستعلام (للمالك فقط)
     # ═══════════════════════════════════════════════════════════
