@@ -72,6 +72,34 @@ def get_members_count():
     except:
         return 0
 
+def get_all_members():
+    """جلب كل الأعضاء من البنية الجديدة والقديمة"""
+    all_members = {}
+    db = get_db()
+    
+    try:
+        # 1. جلب من all_members (الجديد)
+        docs = db.collection('all_members').get()
+        for doc in docs:
+            data = doc.to_dict()
+            user_id = str(data.get('user_id', doc.id))
+            all_members[user_id] = data
+        
+        # 2. جلب من members/{group}/users (القديم)
+        groups = db.collection('members').get()
+        for group in groups:
+            users = group.reference.collection('users').get()
+            for user in users:
+                data = user.to_dict()
+                user_id = str(data.get('user_id', user.id))
+                # إذا موجود بالجديد، لا نستبدله
+                if user_id not in all_members:
+                    all_members[user_id] = data
+    except Exception as e:
+        print(f"❌ خطأ في جلب الأعضاء: {e}")
+    
+    return list(all_members.values())
+
 # ═══════════════════════════════════════════════════════════════════
 # تنظيف البيانات القديمة
 # ═══════════════════════════════════════════════════════════════════
