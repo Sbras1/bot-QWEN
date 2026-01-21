@@ -63,6 +63,15 @@ def search_by_username(username):
         print(f"❌ خطأ في البحث: {e}")
     return None
 
+def get_members_count():
+    """عدد الأعضاء المحفوظين"""
+    try:
+        db = get_db()
+        docs = db.collection('all_members').get()
+        return len(docs)
+    except:
+        return 0
+
 # ═══════════════════════════════════════════════════════════════════
 # تنظيف البيانات القديمة
 # ═══════════════════════════════════════════════════════════════════

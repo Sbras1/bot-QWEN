@@ -1,11 +1,14 @@
 """
 نظام الحفظ التلقائي 📦
-يحفظ كل من يرسل في أي مجموعة
+يحفظ كل من يرسل في أي مجموعة + إشعارات التغييرات
 """
 import os
 from datetime import datetime
 from telethon import events
 import database as db
+
+# القروب المركزي للإشعارات
+LOG_GROUP = -1005264933718
 
 def register(client):
     """تسجيل نظام الحفظ التلقائي"""
@@ -45,17 +48,49 @@ def register(client):
             old_name = old_data.get('full_name', '')
             old_username = old_data.get('username', '')
             
-            # تسجيل تغيير الاسم
+            # تسجيل تغيير الاسم + إشعار
             if old_name and old_name != full_name:
                 name_history = old_data.get('name_history', [])
                 name_history.append({'name': full_name, 'date': today})
                 old_data['name_history'] = name_history
+                
+                # إرسال إشعار
+                try:
+                    notify_text = f"""
+📝 **تغيير اسم**
+
+🆔 `{user_id}`
+👤 القديم: {old_name}
+👤 الجديد: {full_name}
+📧 @{username if username else 'بدون يوزر'}
+📅 {now}
+"""
+                    await client.send_message(LOG_GROUP, notify_text)
+                except:
+                    pass
             
-            # تسجيل تغيير اليوزر
+            # تسجيل تغيير اليوزر + إشعار
             if old_username != username:
                 username_history = old_data.get('username_history', [])
                 username_history.append({'username': username, 'date': today})
                 old_data['username_history'] = username_history
+                
+                # إرسال إشعار
+                try:
+                    old_uname = f"@{old_username}" if old_username else "بدون"
+                    new_uname = f"@{username}" if username else "بدون"
+                    notify_text = f"""
+📧 **تغيير يوزر**
+
+🆔 `{user_id}`
+👤 {full_name}
+📧 القديم: {old_uname}
+📧 الجديد: {new_uname}
+📅 {now}
+"""
+                    await client.send_message(LOG_GROUP, notify_text)
+                except:
+                    pass
             
             old_data['full_name'] = full_name
             old_data['first_name'] = first_name
@@ -80,6 +115,29 @@ def register(client):
                 'username_history': [{'username': username, 'date': today}] if username else []
             }
             db.save_member(user_id, new_data)
+    
+    # ═══════════════════════════════════════════════════════════
+    # أوامر الاختبار
+    # ═══════════════════════════════════════════════════════════
+    
+    @client.on(events.NewMessage(pattern=r'^\.بنق$'))
+    async def ping(event):
+        """اختبار البوت"""
+        if not event.out:
+            return
+        await event.edit("✅ **شغال!**")
+    
+    @client.on(events.NewMessage(pattern=r'^\.احصائيات$'))
+    async def stats(event):
+        """إحصائيات الأعضاء المحفوظين"""
+        if not event.out:
+            return
+        
+        try:
+            count = db.get_members_count()
+            await event.edit(f"📊 **الإحصائيات**\n\n👥 الأعضاء المحفوظين: **{count}**")
+        except:
+            await event.edit("❌ خطأ في جلب الإحصائيات")
     
     # ═══════════════════════════════════════════════════════════
     # أوامر الاستعلام (للمالك فقط)
