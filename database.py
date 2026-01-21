@@ -80,6 +80,7 @@ def get_all_members():
     try:
         # 1. جلب من all_members (الجديد)
         docs = db.collection('all_members').get()
+        print(f"📊 all_members: {len(docs)} عضو")
         for doc in docs:
             data = doc.to_dict()
             user_id = str(data.get('user_id', doc.id))
@@ -87,14 +88,19 @@ def get_all_members():
         
         # 2. جلب من members/{group}/users (القديم)
         groups = db.collection('members').get()
+        print(f"📊 مجموعات قديمة: {len(groups)}")
         for group in groups:
+            group_id = group.id
             users = group.reference.collection('users').get()
+            print(f"  - المجموعة {group_id}: {len(users)} عضو")
             for user in users:
                 data = user.to_dict()
                 user_id = str(data.get('user_id', user.id))
                 # إذا موجود بالجديد، لا نستبدله
                 if user_id not in all_members:
                     all_members[user_id] = data
+        
+        print(f"📊 المجموع: {len(all_members)} عضو")
     except Exception as e:
         print(f"❌ خطأ في جلب الأعضاء: {e}")
     
