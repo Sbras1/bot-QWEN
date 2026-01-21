@@ -72,6 +72,32 @@ def get_members_count():
     except:
         return 0
 
+# ═══════════════════════════════════════════════════════════════════
+# إعدادات القروب المركزي
+# ═══════════════════════════════════════════════════════════════════
+
+def save_log_group(chat_id):
+    """حفظ آيدي قروب الإشعارات"""
+    try:
+        db = get_db()
+        db.collection('bot_settings').document('log_group').set({
+            'chat_id': chat_id
+        })
+        return True
+    except:
+        return False
+
+def get_log_group():
+    """جلب آيدي قروب الإشعارات"""
+    try:
+        db = get_db()
+        doc = db.collection('bot_settings').document('log_group').get()
+        if doc.exists:
+            return doc.to_dict().get('chat_id')
+    except:
+        pass
+    return None
+
 def get_all_members():
     """جلب كل الأعضاء من البنية الجديدة والقديمة"""
     all_members = {}

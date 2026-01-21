@@ -30,23 +30,25 @@ def register(client):
             # انتظار حتى يتصل البوت
             await asyncio.sleep(5)
             
+            # جلب آيدي القروب من قاعدة البيانات
+            saved_id = db.get_log_group()
+            if saved_id:
+                print(f"📋 جلب قروب الإشعارات المحفوظ: {saved_id}")
+            
+            target_id = saved_id or LOG_GROUP
+            
             # جلب كل الدردشات للتعرف على القروب
             async for dialog in client.iter_dialogs():
                 chat_id = dialog.id
                 # مقارنة الآيدي بطرق مختلفة
-                if chat_id == LOG_GROUP or chat_id == abs(LOG_GROUP):
+                if chat_id == target_id or chat_id == abs(target_id):
                     log_entity = dialog.entity
                     print(f"✅ تم العثور على قروب الإشعارات: {dialog.name}")
                     init_done = True
                     return
             
             if not log_entity:
-                print(f"⚠️ لم يتم العثور على قروب الإشعارات {LOG_GROUP}")
-                # طباعة كل القروبات للتشخيص
-                print("📋 القروبات المتاحة:")
-                async for d in client.iter_dialogs():
-                    if d.is_group or d.is_channel:
-                        print(f"  - {d.name}: {d.id}")
+                print(f"⚠️ لم يتم العثور على قروب الإشعارات")
             init_done = True
         except Exception as e:
             print(f"❌ خطأ في جلب القروب: {e}")
@@ -64,7 +66,12 @@ def register(client):
             return
         
         log_entity = await event.get_chat()
-        await event.edit(f"✅ تم ربط هذا القروب للإشعارات\n🆔 `{event.chat_id}`")
+        chat_id = event.chat_id
+        
+        # حفظ في قاعدة البيانات
+        db.save_log_group(chat_id)
+        
+        await event.edit(f"✅ تم ربط وحفظ هذا القروب للإشعارات\n🆔 `{chat_id}`")
     
     # ═══════════════════════════════════════════════════════════
     # الحفظ التلقائي - كل رسالة في أي مجموعة
