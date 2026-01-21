@@ -1,13 +1,12 @@
 """
 نظام مراقبة المجموعات 👁️
+نظام مركزي - مجموعة متغيرات واحدة لجميع المجموعات
 """
 import os
 import json
 import asyncio
 from datetime import datetime
 from telethon import events
-from telethon.tl.functions.messages import CreateChatRequest
-from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.channels import GetParticipantsRequest
 from telethon.tl.types import ChannelParticipantsSearch
 import database as db
@@ -20,7 +19,95 @@ def register(client):
         owner_id = int(owner_id)
     
     # ═══════════════════════════════════════════════════════════
-    # أمر تفعيل المراقبة
+    # أمر تعيين مجموعة المتغيرات المركزية
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^متغيرات (-?\d+)$'))
+    async def set_central_log_group(event):
+        """تعيين مجموعة المتغيرات المركزية"""
+        log_group_id = int(event.pattern_match.group(1))
+        
+        await event.edit("⏳ جاري التحقق من المجموعة...")
+        
+        try:
+            # التحقق من المجموعة
+            chat = await client.get_entity(log_group_id)
+            
+            if not hasattr(chat, 'title'):
+                await event.edit("❌ هذا ليس مجموعة!")
+                return
+            
+            chat_title = chat.title
+            
+            # حفظ في قاعدة البيانات
+            db.save_central_log_group(log_group_id)
+            
+            # إرسال رسالة تأكيد في المجموعة
+            welcome_msg = f"""
+🎉 **تم تعيين هذه المجموعة كمجموعة المتغيرات المركزية**
+
+⏰ **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+━━━━━━━━━━━━━━━━━━━━━
+
+سيتم إرسال جميع التنبيهات من كل المجموعات المراقبة هنا:
+• 👋 عضو جديد
+• 🚪 انضمام عضو
+• 📝 تغيير اسم
+• 📧 تغيير يوزر
+"""
+            await client.send_message(log_group_id, welcome_msg)
+            
+            await event.edit(f"""
+✅ **تم تعيين مجموعة المتغيرات المركزية!**
+
+📂 المجموعة: {chat_title}
+🆔 الآيدي: `{log_group_id}`
+
+الآن كل التنبيهات من جميع المجموعات المراقبة ستصل هنا.
+""")
+            
+        except Exception as e:
+            await event.edit(f"❌ خطأ: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════
+    # أمر عرض مجموعة المتغيرات الحالية
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^متغيرات$'))
+    async def show_central_log_group(event):
+        """عرض مجموعة المتغيرات المركزية"""
+        log_group_id = db.get_central_log_group()
+        
+        if not log_group_id:
+            await event.edit("""
+❌ **لم يتم تعيين مجموعة المتغيرات المركزية بعد!**
+
+استخدم الأمر:
+`متغيرات -100xxx`
+
+لتعيين مجموعة المتغيرات.
+""")
+            return
+        
+        try:
+            chat = await client.get_entity(log_group_id)
+            chat_title = getattr(chat, 'title', 'غير معروف')
+            
+            await event.edit(f"""
+📂 **مجموعة المتغيرات المركزية**
+
+📍 المجموعة: {chat_title}
+🆔 الآيدي: `{log_group_id}`
+""")
+        except:
+            await event.edit(f"""
+📂 **مجموعة المتغيرات المركزية**
+
+🆔 الآيدي: `{log_group_id}`
+⚠️ لم أستطع جلب اسم المجموعة
+""")
+    
+    # ═══════════════════════════════════════════════════════════
+    # أمر تفعيل المراقبة (داخل المجموعة)
     # ═══════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^مراقبة$'))
     async def enable_monitoring(event):
@@ -35,85 +122,71 @@ def register(client):
         chat_id = event.chat_id
         chat_title = chat.title
         
+        # التحقق من وجود مجموعة المتغيرات المركزية
+        log_group_id = db.get_central_log_group()
+        if not log_group_id:
+            await event.edit("""
+❌ **لم يتم تعيين مجموعة المتغيرات المركزية!**
+
+عيّن مجموعة المتغيرات أولاً بأمر:
+`متغيرات -100xxx`
+""")
+            return
+        
         # التحقق إذا كانت المجموعة مراقبة مسبقاً
         existing = db.get_monitored_group(chat_id)
         if existing and existing.get('is_active'):
             await event.edit("⚠️ هذه المجموعة مراقبة مسبقاً!")
             return
         
-        await event.edit("⏳ جاري إنشاء مجموعة المتغيرات...")
+        # حفظ في قاعدة البيانات
+        db.save_monitored_group(chat_id, {
+            'group_id': chat_id,
+            'group_title': chat_title,
+            'is_active': True,
+            'created_at': datetime.now().isoformat()
+        })
         
+        # إرسال إشعار في مجموعة المتغيرات المركزية
         try:
-            # إنشاء مجموعة المتغيرات
-            me = await client.get_me()
-            log_group_title = f"متغيرات مجموعة {chat_title}"
-            
-            # إنشاء المجموعة
-            await client(CreateChatRequest(
-                users=[me.id],
-                title=log_group_title
-            ))
-            
-            # انتظار قليل ثم البحث عن المجموعة في الدردشات
-            await asyncio.sleep(1)
-            
-            log_group_id = None
-            dialogs = await client.get_dialogs(limit=10)
-            for dialog in dialogs:
-                if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                    log_group_id = dialog.id
-                    break
-            
-            if not log_group_id:
-                await event.edit("❌ تم إنشاء المجموعة لكن لم أستطع الحصول على آيديها. حاول مرة أخرى.")
-                return
-            
-            # حفظ في قاعدة البيانات
-            db.save_monitored_group(chat_id, {
-                'group_id': chat_id,
-                'group_title': chat_title,
-                'log_group_id': log_group_id,
-                'log_group_title': log_group_title,
-                'is_active': True,
-                'created_at': datetime.now().isoformat()
-            })
-            
-            # إرسال رسالة ترحيبية في مجموعة المتغيرات
-            welcome_msg = f"""
-🎉 **تم إنشاء مجموعة المتغيرات**
-
-📍 **المجموعة المراقبة:** {chat_title}
-🆔 **آيدي المجموعة:** `{chat_id}`
-⏰ **تاريخ التفعيل:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
+            alert = f"""
+🟢 **تم تفعيل مراقبة مجموعة جديدة**
 ━━━━━━━━━━━━━━━━━━━━━
 
-سيتم إرسال التنبيهات هنا عند:
-• 👋 ظهور عضو جديد
-• 📝 تغيير اسم
-• 📧 تغيير يوزر
+📍 **المجموعة:** {chat_title}
+🆔 **الآيدي:** `{chat_id}`
+⏰ **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
-            await client.send_message(log_group_id, welcome_msg)
-            
-            await event.edit(f"""
+            await client.send_message(log_group_id, alert)
+        except:
+            pass
+        
+        await event.edit(f"""
 ✅ **تم تفعيل المراقبة بنجاح!**
 
 📍 المجموعة: {chat_title}
-📂 مجموعة المتغيرات: {log_group_title}
 
-سيتم حفظ بيانات كل من يكتب وإرسال التنبيهات.
+سيتم حفظ بيانات كل من يكتب وإرسال التنبيهات للمجموعة المركزية.
 """)
-            
-        except Exception as e:
-            await event.edit(f"❌ خطأ في إنشاء المجموعة: {str(e)}")
     
     # ═══════════════════════════════════════════════════════════
-    # أمر تفعيل المراقبة بالآيدي (يدوي)
+    # أمر تفعيل المراقبة بالآيدي
     # ═══════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^مراقبة (-?\d+)$'))
     async def enable_monitoring_by_id(event):
         """تفعيل المراقبة بالآيدي"""
         target_chat_id = int(event.pattern_match.group(1))
+        
+        # التحقق من وجود مجموعة المتغيرات المركزية
+        log_group_id = db.get_central_log_group()
+        if not log_group_id:
+            await event.edit("""
+❌ **لم يتم تعيين مجموعة المتغيرات المركزية!**
+
+عيّن مجموعة المتغيرات أولاً بأمر:
+`متغيرات -100xxx`
+""")
+            return
         
         await event.edit("⏳ جاري التحقق من المجموعة...")
         
@@ -133,66 +206,35 @@ def register(client):
                 await event.edit(f"⚠️ المجموعة **{chat_title}** مراقبة مسبقاً!")
                 return
             
-            await event.edit(f"⏳ جاري إنشاء مجموعة المتغيرات لـ **{chat_title}**...")
-            
-            # إنشاء مجموعة المتغيرات
-            me = await client.get_me()
-            log_group_title = f"متغيرات مجموعة {chat_title}"
-            
-            await client(CreateChatRequest(
-                users=[me.id],
-                title=log_group_title
-            ))
-            
-            await asyncio.sleep(1)
-            
-            log_group_id = None
-            dialogs = await client.get_dialogs(limit=10)
-            for dialog in dialogs:
-                if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                    log_group_id = dialog.id
-                    break
-            
-            if not log_group_id:
-                await event.edit("❌ تم إنشاء المجموعة لكن لم أستطع الحصول على آيديها. حاول مرة أخرى.")
-                return
-            
             # حفظ في قاعدة البيانات
             db.save_monitored_group(target_chat_id, {
                 'group_id': target_chat_id,
                 'group_title': chat_title,
-                'log_group_id': log_group_id,
-                'log_group_title': log_group_title,
                 'is_active': True,
                 'created_at': datetime.now().isoformat()
             })
             
-            # إرسال رسالة ترحيبية
-            welcome_msg = f"""
-🎉 **تم إنشاء مجموعة المتغيرات**
-
-📍 **المجموعة المراقبة:** {chat_title}
-🆔 **آيدي المجموعة:** `{target_chat_id}`
-⏰ **تاريخ التفعيل:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
+            # إرسال إشعار في مجموعة المتغيرات المركزية
+            try:
+                alert = f"""
+🟢 **تم تفعيل مراقبة مجموعة جديدة**
 ━━━━━━━━━━━━━━━━━━━━━
 
-سيتم إرسال التنبيهات هنا عند:
-• 👋 ظهور عضو جديد
-• 🚪 انضمام عضو
-• 📝 تغيير اسم
-• 📧 تغيير يوزر
+📍 **المجموعة:** {chat_title}
+🆔 **الآيدي:** `{target_chat_id}`
+⏰ **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
-            await client.send_message(log_group_id, welcome_msg)
+                await client.send_message(log_group_id, alert)
+            except:
+                pass
             
             await event.edit(f"""
 ✅ **تم تفعيل المراقبة بنجاح!**
 
 📍 المجموعة: {chat_title}
 🆔 الآيدي: `{target_chat_id}`
-📂 مجموعة المتغيرات: {log_group_title}
 
-سيتم حفظ بيانات كل من يكتب وإرسال التنبيهات.
+سيتم حفظ بيانات كل من يكتب وإرسال التنبيهات للمجموعة المركزية.
 """)
             
         except ValueError:
@@ -215,10 +257,60 @@ def register(client):
         
         db.update_monitored_group(chat_id, {'is_active': False})
         
+        # إرسال إشعار في مجموعة المتغيرات
+        log_group_id = db.get_central_log_group()
+        if log_group_id:
+            try:
+                await client.send_message(log_group_id, f"""
+🔴 **تم إلغاء مراقبة مجموعة**
+
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+🆔 الآيدي: `{chat_id}`
+""")
+            except:
+                pass
+        
         await event.edit(f"""
 ✅ **تم إلغاء المراقبة**
 
 📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+
+ملاحظة: البيانات المحفوظة لم تُحذف.
+""")
+    
+    # ═══════════════════════════════════════════════════════════
+    # أمر إلغاء المراقبة بالآيدي
+    # ═══════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^الغاء (-?\d+)$'))
+    async def disable_monitoring_by_id(event):
+        """إلغاء المراقبة بالآيدي"""
+        target_chat_id = int(event.pattern_match.group(1))
+        
+        group_data = db.get_monitored_group(target_chat_id)
+        if not group_data:
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
+        
+        db.update_monitored_group(target_chat_id, {'is_active': False})
+        
+        # إرسال إشعار في مجموعة المتغيرات
+        log_group_id = db.get_central_log_group()
+        if log_group_id:
+            try:
+                await client.send_message(log_group_id, f"""
+🔴 **تم إلغاء مراقبة مجموعة**
+
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+🆔 الآيدي: `{target_chat_id}`
+""")
+            except:
+                pass
+        
+        await event.edit(f"""
+✅ **تم إلغاء المراقبة**
+
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
+🆔 الآيدي: `{target_chat_id}`
 
 ملاحظة: البيانات المحفوظة لم تُحذف.
 """)
@@ -234,12 +326,8 @@ def register(client):
         # التحقق من المجموعة
         group_data = db.get_monitored_group(chat_id)
         if not group_data:
-            group_data = db.get_monitored_group_by_log_id(chat_id)
-            if group_data:
-                chat_id = group_data.get('group_id')
-            else:
-                await event.edit("❌ هذه المجموعة غير مراقبة! فعّل المراقبة أولاً بأمر `مراقبة`")
-                return
+            await event.edit("❌ هذه المجموعة غير مراقبة! فعّل المراقبة أولاً بأمر `مراقبة`")
+            return
         
         await event.edit("⏳ **جاري فحص الأعضاء...**\nقد يستغرق بعض الوقت...")
         
@@ -331,12 +419,14 @@ def register(client):
 """)
             
             # إرسال إشعار في مجموعة المتغيرات
-            log_group_id = group_data.get('log_group_id')
+            log_group_id = db.get_central_log_group()
             if log_group_id:
                 try:
                     await client.send_message(log_group_id, f"""
-📊 **تم فحص الأعضاء**
+📊 **تم فحص أعضاء مجموعة**
+━━━━━━━━━━━━━━━━━━━━━
 
+📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
 👥 إجمالي: {len(all_participants)}
 🆕 جدد: {new_count}
 ⏰ {now}
@@ -398,14 +488,16 @@ def register(client):
                 }
                 db.save_member(chat_id, user_id, new_member)
                 
-                # إرسال إشعار
-                log_group_id = group_data.get('log_group_id')
+                # إرسال إشعار في المجموعة المركزية
+                log_group_id = db.get_central_log_group()
                 if log_group_id:
                     username_text = f"@{username}" if username else "بدون يوزر"
+                    group_title = group_data.get('group_title', 'غير معروف')
                     alert = f"""
 🚪 **انضمام جديد**
-━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 
+📍 **المجموعة:** {group_title}
 🆔 `{user_id}`
 👤 {full_name}
 📧 {username_text}
@@ -435,8 +527,14 @@ def register(client):
         for i, group in enumerate(groups, 1):
             status = "🟢" if group.get('is_active') else "🔴"
             text += f"{status} **{i}.** {group.get('group_title', 'بدون اسم')}\n"
-            text += f"    🆔 `{group.get('group_id')}`\n"
-            text += f"    📂 {group.get('log_group_title', 'غير متاح')}\n\n"
+            text += f"    🆔 `{group.get('group_id')}`\n\n"
+        
+        # إضافة معلومات المجموعة المركزية
+        log_group_id = db.get_central_log_group()
+        if log_group_id:
+            text += f"\n📂 **مجموعة المتغيرات:** `{log_group_id}`"
+        else:
+            text += "\n⚠️ **لم يتم تعيين مجموعة المتغيرات المركزية**"
         
         await event.edit(text)
     
@@ -448,16 +546,11 @@ def register(client):
         """عرض أعضاء المجموعة المحفوظين"""
         chat_id = event.chat_id
         
-        # التحقق من المجموعة (قد تكون المراقبة أو المتغيرات)
+        # التحقق من المجموعة
         group_data = db.get_monitored_group(chat_id)
         if not group_data:
-            # ربما نحن في مجموعة المتغيرات
-            group_data = db.get_monitored_group_by_log_id(chat_id)
-            if group_data:
-                chat_id = group_data.get('group_id')
-            else:
-                await event.edit("❌ هذه المجموعة غير مراقبة!")
-                return
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
         
         members = db.get_group_members(chat_id)
         
@@ -562,12 +655,8 @@ def register(client):
         
         group_data = db.get_monitored_group(chat_id)
         if not group_data:
-            group_data = db.get_monitored_group_by_log_id(chat_id)
-            if group_data:
-                chat_id = group_data.get('group_id')
-            else:
-                await event.edit("❌ هذه المجموعة غير مراقبة!")
-                return
+            await event.edit("❌ هذه المجموعة غير مراقبة!")
+            return
         
         members = db.get_group_members(chat_id)
         
@@ -666,6 +755,10 @@ def register(client):
         now = datetime.now().strftime('%Y-%m-%d %H:%M')
         today = datetime.now().strftime('%Y-%m-%d')
         
+        # جلب مجموعة المتغيرات المركزية
+        log_group_id = db.get_central_log_group()
+        group_title = group_data.get('group_title', 'غير معروف')
+        
         # جلب البيانات القديمة
         old_data = db.get_member(chat_id, user_id)
         
@@ -710,37 +803,37 @@ def register(client):
             
             db.save_member(chat_id, user_id, old_data)
             
-            # إرسال إشعارات التغيير
-            if changes:
-                log_group_id = group_data.get('log_group_id')
-                if log_group_id:
-                    for change in changes:
-                        if change['type'] == 'name':
-                            alert = f"""
+            # إرسال إشعارات التغيير للمجموعة المركزية
+            if changes and log_group_id:
+                for change in changes:
+                    if change['type'] == 'name':
+                        alert = f"""
 📝 **تغيير اسم**
-━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 
+📍 **المجموعة:** {group_title}
 🆔 `{user_id}`
 👤 {change['old']} ← **{change['new']}**
 📧 @{username if username else 'بدون يوزر'}
 ⏰ {now}
 """
-                        else:
-                            old_u = f"@{change['old']}" if change['old'] else "بدون يوزر"
-                            new_u = f"@{change['new']}" if change['new'] else "بدون يوزر"
-                            alert = f"""
+                    else:
+                        old_u = f"@{change['old']}" if change['old'] else "بدون يوزر"
+                        new_u = f"@{change['new']}" if change['new'] else "بدون يوزر"
+                        alert = f"""
 📧 **تغيير يوزر**
-━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 
+📍 **المجموعة:** {group_title}
 🆔 `{user_id}`
 👤 {full_name}
 📧 {old_u} ← **{new_u}**
 ⏰ {now}
 """
-                        try:
-                            await client.send_message(log_group_id, alert)
-                        except:
-                            pass
+                    try:
+                        await client.send_message(log_group_id, alert)
+                    except:
+                        pass
         
         else:
             # عضو جديد
@@ -759,14 +852,14 @@ def register(client):
             
             db.save_member(chat_id, user_id, new_member)
             
-            # إرسال إشعار عضو جديد
-            log_group_id = group_data.get('log_group_id')
+            # إرسال إشعار عضو جديد للمجموعة المركزية
             if log_group_id:
                 username_text = f"@{username}" if username else "بدون يوزر"
                 alert = f"""
 👋 **عضو جديد**
-━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 
+📍 **المجموعة:** {group_title}
 🆔 `{user_id}`
 👤 {full_name}
 📧 {username_text}
@@ -781,6 +874,50 @@ def register(client):
     # أوامر التحكم عن بُعد
     # ═══════════════════════════════════════════════════════════
     if owner_id:
+        
+        # تعيين المجموعة المركزية عن بُعد
+        @client.on(events.NewMessage(incoming=True, pattern=r'^\.متغيرات (-?\d+)$'))
+        async def remote_set_central_log(event):
+            """تعيين مجموعة المتغيرات - عن بُعد"""
+            sender = await event.get_sender()
+            if sender.id != owner_id:
+                return
+            
+            log_group_id = int(event.pattern_match.group(1))
+            
+            msg = await event.reply("⏳ جاري التحقق...")
+            
+            try:
+                chat = await client.get_entity(log_group_id)
+                chat_title = getattr(chat, 'title', 'غير معروف')
+                
+                db.save_central_log_group(log_group_id)
+                
+                await msg.edit(f"""
+✅ **تم تعيين مجموعة المتغيرات المركزية!**
+
+📂 المجموعة: {chat_title}
+🆔 الآيدي: `{log_group_id}`
+""")
+            except Exception as e:
+                await msg.edit(f"❌ خطأ: {str(e)}")
+        
+        # عرض المجموعة المركزية عن بُعد
+        @client.on(events.NewMessage(incoming=True, pattern=r'^\.متغيرات$'))
+        async def remote_show_central_log(event):
+            """عرض مجموعة المتغيرات - عن بُعد"""
+            sender = await event.get_sender()
+            if sender.id != owner_id:
+                return
+            
+            log_group_id = db.get_central_log_group()
+            
+            if not log_group_id:
+                await event.reply("❌ لم يتم تعيين مجموعة المتغيرات المركزية بعد!")
+                return
+            
+            await event.reply(f"📂 **مجموعة المتغيرات:** `{log_group_id}`")
+        
         @client.on(events.NewMessage(incoming=True, pattern=r'^\.المجموعات$'))
         async def remote_list_groups(event):
             """عرض المجموعات - عن بُعد"""
@@ -898,10 +1035,15 @@ def register(client):
             
             target_chat_id = int(event.pattern_match.group(1))
             
+            # التحقق من وجود مجموعة المتغيرات
+            log_group_id = db.get_central_log_group()
+            if not log_group_id:
+                await event.reply("❌ لم يتم تعيين مجموعة المتغيرات المركزية!")
+                return
+            
             msg = await event.reply("⏳ جاري التحقق من المجموعة...")
             
             try:
-                # جلب معلومات المجموعة
                 chat = await client.get_entity(target_chat_id)
                 
                 if not hasattr(chat, 'title'):
@@ -910,67 +1052,36 @@ def register(client):
                 
                 chat_title = chat.title
                 
-                # التحقق إذا كانت مراقبة مسبقاً
                 existing = db.get_monitored_group(target_chat_id)
                 if existing and existing.get('is_active'):
                     await msg.edit(f"⚠️ المجموعة **{chat_title}** مراقبة مسبقاً!")
                     return
                 
-                await msg.edit(f"⏳ جاري إنشاء مجموعة المتغيرات لـ **{chat_title}**...")
-                
-                # إنشاء مجموعة المتغيرات
-                me = await client.get_me()
-                log_group_title = f"متغيرات مجموعة {chat_title}"
-                
-                await client(CreateChatRequest(
-                    users=[me.id],
-                    title=log_group_title
-                ))
-                
-                await asyncio.sleep(1)
-                
-                log_group_id = None
-                dialogs = await client.get_dialogs(limit=10)
-                for dialog in dialogs:
-                    if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                        log_group_id = dialog.id
-                        break
-                
-                if not log_group_id:
-                    await msg.edit("❌ تم إنشاء المجموعة لكن لم أستطع الحصول على آيديها.")
-                    return
-                
-                # حفظ في قاعدة البيانات
                 db.save_monitored_group(target_chat_id, {
                     'group_id': target_chat_id,
                     'group_title': chat_title,
-                    'log_group_id': log_group_id,
-                    'log_group_title': log_group_title,
                     'is_active': True,
                     'created_at': datetime.now().isoformat()
                 })
                 
-                # إرسال رسالة ترحيبية
-                welcome_msg = f"""
-🎉 **تم إنشاء مجموعة المتغيرات**
-
-📍 **المجموعة المراقبة:** {chat_title}
-🆔 **آيدي المجموعة:** `{target_chat_id}`
-⏰ **تاريخ التفعيل:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-🎮 **تم التفعيل عن بُعد**
-
+                # إشعار في المجموعة المركزية
+                try:
+                    await client.send_message(log_group_id, f"""
+🟢 **تم تفعيل مراقبة مجموعة جديدة** (عن بُعد)
 ━━━━━━━━━━━━━━━━━━━━━
 
-سيتم إرسال التنبيهات هنا.
-"""
-                await client.send_message(log_group_id, welcome_msg)
+📍 **المجموعة:** {chat_title}
+🆔 **الآيدي:** `{target_chat_id}`
+⏰ **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+""")
+                except:
+                    pass
                 
                 await msg.edit(f"""
 ✅ **تم تفعيل المراقبة بنجاح!**
 
 📍 المجموعة: {chat_title}
 🆔 الآيدي: `{target_chat_id}`
-📂 مجموعة المتغيرات: {log_group_title}
 """)
                 
             except ValueError:
@@ -987,7 +1098,6 @@ def register(client):
             
             target_chat_id = int(event.pattern_match.group(1))
             
-            # التحقق من المجموعة
             group_data = db.get_monitored_group(target_chat_id)
             if not group_data:
                 await event.reply("❌ هذه المجموعة غير مراقبة! فعّل المراقبة أولاً.")
@@ -1019,7 +1129,6 @@ def register(client):
                     if len(participants.users) < limit:
                         break
                 
-                # حفظ الأعضاء
                 now = datetime.now().strftime('%Y-%m-%d %H:%M')
                 today = datetime.now().strftime('%Y-%m-%d')
                 saved_count = 0
@@ -1092,226 +1201,6 @@ def register(client):
 
 📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
 🆔 الآيدي: `{target_chat_id}`
-
-ملاحظة: البيانات المحفوظة لم تُحذف.
-""")
-        
-        @client.on(events.NewMessage(incoming=True, pattern=r'^\.اصلاح (-?\d+)$'))
-        async def remote_fix_monitoring(event):
-            """إصلاح مجموعة المتغيرات عن بُعد"""
-            sender = await event.get_sender()
-            if sender.id != owner_id:
-                return
-            
-            target_chat_id = int(event.pattern_match.group(1))
-            
-            group_data = db.get_monitored_group(target_chat_id)
-            if not group_data:
-                await event.reply("❌ هذه المجموعة غير مراقبة!")
-                return
-            
-            msg = await event.reply("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
-            
-            try:
-                chat_title = group_data.get('group_title', 'غير معروف')
-                me = await client.get_me()
-                log_group_title = f"متغيرات مجموعة {chat_title}"
-                
-                await client(CreateChatRequest(
-                    users=[me.id],
-                    title=log_group_title
-                ))
-                
-                await asyncio.sleep(1)
-                
-                log_group_id = None
-                dialogs = await client.get_dialogs(limit=10)
-                for dialog in dialogs:
-                    if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                        log_group_id = dialog.id
-                        break
-                
-                if not log_group_id:
-                    await msg.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
-                    return
-                
-                db.update_monitored_group(target_chat_id, {
-                    'log_group_id': log_group_id,
-                    'log_group_title': log_group_title,
-                    'is_active': True
-                })
-                
-                # رسالة ترحيبية
-                welcome_msg = f"""
-🔧 **تم إصلاح مجموعة المتغيرات**
-
-📍 المجموعة المراقبة: {chat_title}
-🆔 آيدي المجموعة: `{target_chat_id}`
-⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
-البيانات القديمة محفوظة ✅
-"""
-                await client.send_message(log_group_id, welcome_msg)
-                
-                await msg.edit(f"""
-✅ **تم الإصلاح بنجاح!**
-
-📍 المجموعة: {chat_title}
-📂 مجموعة المتغيرات الجديدة: {log_group_title}
-""")
-                
-            except Exception as e:
-                await msg.edit(f"❌ خطأ: {str(e)}")
-    
-    # ═══════════════════════════════════════════════════════════
-    # أوامر إلغاء وإصلاح بالآيدي (للحساب)
-    # ═══════════════════════════════════════════════════════════
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^الغاء (-?\d+)$'))
-    async def disable_monitoring_by_id(event):
-        """إلغاء المراقبة بالآيدي"""
-        target_chat_id = int(event.pattern_match.group(1))
-        
-        group_data = db.get_monitored_group(target_chat_id)
-        if not group_data:
-            await event.edit("❌ هذه المجموعة غير مراقبة!")
-            return
-        
-        db.update_monitored_group(target_chat_id, {'is_active': False})
-        
-        await event.edit(f"""
-✅ **تم إلغاء المراقبة**
-
-📍 المجموعة: {group_data.get('group_title', 'غير معروف')}
-🆔 الآيدي: `{target_chat_id}`
-
-ملاحظة: البيانات المحفوظة لم تُحذف.
 """)
     
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^اصلاح مراقبة$'))
-    async def fix_monitoring(event):
-        """إصلاح مجموعة المتغيرات"""
-        chat_id = event.chat_id
-        
-        group_data = db.get_monitored_group(chat_id)
-        if not group_data:
-            await event.edit("❌ هذه المجموعة غير مراقبة!")
-            return
-        
-        await event.edit("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
-        
-        try:
-            chat = await event.get_chat()
-            chat_title = getattr(chat, 'title', 'مجموعة')
-            me = await client.get_me()
-            log_group_title = f"متغيرات مجموعة {chat_title}"
-            
-            await client(CreateChatRequest(
-                users=[me.id],
-                title=log_group_title
-            ))
-            
-            await asyncio.sleep(1)
-            
-            log_group_id = None
-            dialogs = await client.get_dialogs(limit=10)
-            for dialog in dialogs:
-                if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                    log_group_id = dialog.id
-                    break
-            
-            if not log_group_id:
-                await event.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
-                return
-            
-            db.update_monitored_group(chat_id, {
-                'log_group_id': log_group_id,
-                'log_group_title': log_group_title,
-                'is_active': True
-            })
-            
-            # رسالة ترحيبية
-            welcome_msg = f"""
-🔧 **تم إصلاح مجموعة المتغيرات**
-
-📍 المجموعة المراقبة: {chat_title}
-🆔 آيدي المجموعة: `{chat_id}`
-⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
-البيانات القديمة محفوظة ✅
-"""
-            await client.send_message(log_group_id, welcome_msg)
-            
-            await event.edit(f"""
-✅ **تم الإصلاح بنجاح!**
-
-📍 المجموعة: {chat_title}
-📂 مجموعة المتغيرات الجديدة: {log_group_title}
-""")
-            
-        except Exception as e:
-            await event.edit(f"❌ خطأ: {str(e)}")
-    
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^اصلاح (-?\d+)$'))
-    async def fix_monitoring_by_id(event):
-        """إصلاح مجموعة المتغيرات بالآيدي"""
-        target_chat_id = int(event.pattern_match.group(1))
-        
-        group_data = db.get_monitored_group(target_chat_id)
-        if not group_data:
-            await event.edit("❌ هذه المجموعة غير مراقبة!")
-            return
-        
-        await event.edit("⏳ جاري إنشاء مجموعة متغيرات جديدة...")
-        
-        try:
-            chat_title = group_data.get('group_title', 'غير معروف')
-            me = await client.get_me()
-            log_group_title = f"متغيرات مجموعة {chat_title}"
-            
-            await client(CreateChatRequest(
-                users=[me.id],
-                title=log_group_title
-            ))
-            
-            await asyncio.sleep(1)
-            
-            log_group_id = None
-            dialogs = await client.get_dialogs(limit=10)
-            for dialog in dialogs:
-                if hasattr(dialog, 'title') and dialog.title == log_group_title:
-                    log_group_id = dialog.id
-                    break
-            
-            if not log_group_id:
-                await event.edit("❌ فشل في الحصول على آيدي المجموعة الجديدة.")
-                return
-            
-            db.update_monitored_group(target_chat_id, {
-                'log_group_id': log_group_id,
-                'log_group_title': log_group_title,
-                'is_active': True
-            })
-            
-            # رسالة ترحيبية
-            welcome_msg = f"""
-🔧 **تم إصلاح مجموعة المتغيرات**
-
-📍 المجموعة المراقبة: {chat_title}
-🆔 آيدي المجموعة: `{target_chat_id}`
-⏰ تاريخ الإصلاح: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
-البيانات القديمة محفوظة ✅
-"""
-            await client.send_message(log_group_id, welcome_msg)
-            
-            await event.edit(f"""
-✅ **تم الإصلاح بنجاح!**
-
-📍 المجموعة: {chat_title}
-📂 مجموعة المتغيرات الجديدة: {log_group_title}
-""")
-            
-        except Exception as e:
-            await event.edit(f"❌ خطأ: {str(e)}")
-    
-    print("✅ تم تحميل نظام المراقبة")
+    print("✅ تم تحميل نظام المراقبة (مركزي)")

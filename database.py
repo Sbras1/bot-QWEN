@@ -174,3 +174,33 @@ def get_member_info(user_id):
     except Exception as e:
         print(f"❌ خطأ في البحث عن العضو: {e}")
     return None
+
+# ═══════════════════════════════════════════════════════════════════
+# دوال مجموعة المتغيرات المركزية
+# ═══════════════════════════════════════════════════════════════════
+
+# حفظ مجموعة المتغيرات المركزية
+def save_central_log_group(log_group_id):
+    """حفظ آيدي مجموعة المتغيرات المركزية"""
+    try:
+        db = get_db()
+        db.collection('settings').document('central_log').set({
+            'log_group_id': log_group_id,
+            'updated_at': __import__('datetime').datetime.now().isoformat()
+        })
+        return True
+    except Exception as e:
+        print(f"❌ خطأ في حفظ المجموعة المركزية: {e}")
+        return False
+
+# جلب مجموعة المتغيرات المركزية
+def get_central_log_group():
+    """جلب آيدي مجموعة المتغيرات المركزية"""
+    try:
+        db = get_db()
+        doc = db.collection('settings').document('central_log').get()
+        if doc.exists:
+            return doc.to_dict().get('log_group_id')
+    except Exception as e:
+        print(f"❌ خطأ في جلب المجموعة المركزية: {e}")
+    return None
