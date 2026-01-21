@@ -106,6 +106,11 @@ def register(client):
         now = datetime.now().strftime('%Y-%m-%d %H:%M')
         today = datetime.now().strftime('%Y-%m-%d')
         
+        # جلب اسم القروب
+        chat = await event.get_chat()
+        group_id = event.chat_id
+        group_name = getattr(chat, 'title', '') or str(group_id)
+        
         # جلب البيانات القديمة
         old_data = db.get_member(user_id)
         
@@ -167,6 +172,11 @@ def register(client):
             old_data['username_lower'] = username.lower() if username else ''
             old_data['last_seen'] = now
             
+            # تحديث قائمة القروبات
+            groups_seen = old_data.get('groups_seen', {})
+            groups_seen[str(group_id)] = group_name
+            old_data['groups_seen'] = groups_seen
+            
             db.save_member(user_id, old_data)
         else:
             # عضو جديد
@@ -180,7 +190,8 @@ def register(client):
                 'first_seen': now,
                 'last_seen': now,
                 'name_history': [{'name': full_name, 'date': today}],
-                'username_history': [{'username': username, 'date': today}] if username else []
+                'username_history': [{'username': username, 'date': today}] if username else [],
+                'groups_seen': {str(group_id): group_name}
             }
             db.save_member(user_id, new_data)
     
@@ -241,6 +252,7 @@ def register(client):
                 
                 total_groups += 1
                 group_name = dialog.name
+                group_id = dialog.id
                 
                 try:
                     # جلب أعضاء القروب
@@ -254,6 +266,11 @@ def register(client):
                         # تحقق إذا موجود
                         existing = db.get_member(user_id)
                         if existing:
+                            # تحديث قائمة القروبات فقط
+                            groups_seen = existing.get('groups_seen', {})
+                            groups_seen[str(group_id)] = group_name
+                            existing['groups_seen'] = groups_seen
+                            db.save_member(user_id, existing)
                             continue
                         
                         # حفظ عضو جديد
@@ -275,7 +292,8 @@ def register(client):
                             'first_seen': now,
                             'last_seen': now,
                             'name_history': [{'name': full_name, 'date': today}],
-                            'username_history': [{'username': username, 'date': today}] if username else []
+                            'username_history': [{'username': username, 'date': today}] if username else [],
+                            'groups_seen': {str(group_id): group_name}
                         }
                         db.save_member(user_id, new_data)
                         saved_new += 1
@@ -354,6 +372,13 @@ def register(client):
                     for entry in username_history:
                         uname = entry.get('username') or 'بدون'
                         content += f"  • @{uname} ({entry.get('date', '؟')})\n"
+                
+                # القروبات
+                groups_seen = m.get('groups_seen', {})
+                if groups_seen:
+                    content += "\n📍 القروبات:\n"
+                    for gid, gname in groups_seen.items():
+                        content += f"  • {gname} ({gid})\n"
                 
                 content += "\n" + "━" * 40 + "\n\n"
             
