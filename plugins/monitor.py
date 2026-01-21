@@ -26,22 +26,13 @@ def register(client):
         """تعيين مجموعة المتغيرات المركزية"""
         log_group_id = int(event.pattern_match.group(1))
         
-        await event.edit("⏳ جاري التحقق من المجموعة...")
+        await event.edit("⏳ جاري حفظ المجموعة...")
         
+        # حفظ مباشر في قاعدة البيانات
+        db.save_central_log_group(log_group_id)
+        
+        # محاولة إرسال رسالة تأكيد
         try:
-            # التحقق من المجموعة
-            chat = await client.get_entity(log_group_id)
-            
-            if not hasattr(chat, 'title'):
-                await event.edit("❌ هذا ليس مجموعة!")
-                return
-            
-            chat_title = chat.title
-            
-            # حفظ في قاعدة البيانات
-            db.save_central_log_group(log_group_id)
-            
-            # إرسال رسالة تأكيد في المجموعة
             welcome_msg = f"""
 🎉 **تم تعيين هذه المجموعة كمجموعة المتغيرات المركزية**
 
@@ -60,14 +51,18 @@ def register(client):
             await event.edit(f"""
 ✅ **تم تعيين مجموعة المتغيرات المركزية!**
 
-📂 المجموعة: {chat_title}
 🆔 الآيدي: `{log_group_id}`
 
 الآن كل التنبيهات من جميع المجموعات المراقبة ستصل هنا.
 """)
-            
-        except Exception as e:
-            await event.edit(f"❌ خطأ: {str(e)}")
+        except:
+            await event.edit(f"""
+✅ **تم حفظ مجموعة المتغيرات!**
+
+🆔 الآيدي: `{log_group_id}`
+
+⚠️ ملاحظة: أرسل رسالة في المجموعة ليتعرف عليها البوت.
+""")
     
     # ═══════════════════════════════════════════════════════════
     # أمر عرض مجموعة المتغيرات الحالية
