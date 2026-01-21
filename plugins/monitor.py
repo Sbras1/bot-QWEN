@@ -127,6 +127,18 @@ def register(client):
             return
         await event.edit("✅ **شغال!**")
     
+    @client.on(events.NewMessage(pattern=r'^\.تست$'))
+    async def test_log(event):
+        """اختبار إرسال للقروب المركزي"""
+        if not event.out:
+            return
+        
+        try:
+            await client.send_message(LOG_GROUP, "🔔 **اختبار الإشعارات**\n\nالبوت متصل بنجاح!")
+            await event.edit(f"✅ تم الإرسال للقروب `{LOG_GROUP}`")
+        except Exception as e:
+            await event.edit(f"❌ خطأ: {e}")
+    
     @client.on(events.NewMessage(pattern=r'^\.احصائيات$'))
     async def stats(event):
         """إحصائيات الأعضاء المحفوظين"""
