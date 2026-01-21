@@ -127,7 +127,10 @@ def save_member(group_id, user_id, data):
     """حفظ بيانات عضو"""
     try:
         db = get_db()
+        # حفظ في المجموعة الخاصة
         db.collection('members').document(str(group_id)).collection('users').document(str(user_id)).set(data)
+        # حفظ في الفهرس السريع للبحث
+        db.collection('all_members').document(str(user_id)).set(data)
         return True
     except Exception as e:
         print(f"❌ خطأ في حفظ العضو: {e}")
@@ -158,12 +161,12 @@ def get_group_members(group_id):
 
 # جلب معلومات عضو من أي مجموعة
 def get_member_info(user_id):
-    """جلب معلومات عضو من أي مجموعة - بحث سريع"""
+    """جلب معلومات عضو - جلب مباشر وسريع"""
     try:
         db = get_db()
-        # استخدام Collection Group Query للبحث في كل subcollections بضربة واحدة
-        docs = db.collection_group('users').where('user_id', '==', int(user_id)).limit(1).get()
-        for doc in docs:
+        # جلب مباشر من الفهرس السريع
+        doc = db.collection('all_members').document(str(user_id)).get()
+        if doc.exists:
             return doc.to_dict()
     except Exception as e:
         print(f"❌ خطأ في البحث عن العضو: {e}")
