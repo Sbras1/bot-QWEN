@@ -221,6 +221,79 @@ def register(client):
         status = "مفعل ✅" if debug_mode else "معطل ❌"
         await event.edit(f"🔍 وضع التشخيص: {status}")
     
+    @client.on(events.NewMessage(pattern=r'^\.فحص$'))
+    async def scan_all_groups(event):
+        """فحص كل القروبات وحفظ جميع الأعضاء"""
+        if not event.out:
+            return
+        
+        msg = await event.edit("⏳ **جاري فحص كل القروبات...**")
+        
+        total_groups = 0
+        total_members = 0
+        saved_new = 0
+        
+        try:
+            # جلب كل الدردشات
+            async for dialog in client.iter_dialogs():
+                if not (dialog.is_group or dialog.is_channel):
+                    continue
+                
+                total_groups += 1
+                group_name = dialog.name
+                
+                try:
+                    # جلب أعضاء القروب
+                    async for user in client.iter_participants(dialog.entity, limit=500):
+                        if user.bot:
+                            continue
+                        
+                        total_members += 1
+                        user_id = user.id
+                        
+                        # تحقق إذا موجود
+                        existing = db.get_member(user_id)
+                        if existing:
+                            continue
+                        
+                        # حفظ عضو جديد
+                        first_name = getattr(user, 'first_name', '') or ''
+                        last_name = getattr(user, 'last_name', '') or ''
+                        full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
+                        username = getattr(user, 'username', '') or ''
+                        
+                        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        today = datetime.now().strftime('%Y-%m-%d')
+                        
+                        new_data = {
+                            'user_id': user_id,
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'full_name': full_name,
+                            'username': username,
+                            'username_lower': username.lower() if username else '',
+                            'first_seen': now,
+                            'last_seen': now,
+                            'name_history': [{'name': full_name, 'date': today}],
+                            'username_history': [{'username': username, 'date': today}] if username else []
+                        }
+                        db.save_member(user_id, new_data)
+                        saved_new += 1
+                        
+                except Exception as e:
+                    # بعض القروبات قد لا نملك صلاحية جلب الأعضاء
+                    pass
+            
+            await msg.edit(f"""
+✅ **تم الفحص**
+
+📊 القروبات: **{total_groups}**
+👥 الأعضاء: **{total_members}**
+💾 جدد محفوظين: **{saved_new}**
+""")
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
     @client.on(events.NewMessage(pattern=r'^\.احصائيات$'))
     async def stats(event):
         """إحصائيات الأعضاء المحفوظين"""
