@@ -12,6 +12,7 @@ import database as db
 LOG_GROUP = -1005264933718
 log_entity = None  # سيتم تعيينه عند البدء
 init_done = False
+debug_mode = False  # وضع التشخيص
 
 def register(client):
     """تسجيل نظام الحفظ التلقائي"""
@@ -79,6 +80,8 @@ def register(client):
     @client.on(events.NewMessage())
     async def auto_save(event):
         """حفظ تلقائي لكل من يرسل"""
+        global debug_mode
+        
         # تجاهل الرسائل الصادرة والخاصة
         if event.out or not event.is_group:
             return
@@ -92,6 +95,13 @@ def register(client):
         last_name = getattr(sender, 'last_name', '') or ''
         full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
         username = getattr(sender, 'username', '') or ''
+        
+        # وضع التشخيص
+        if debug_mode and log_entity:
+            try:
+                await client.send_message(log_entity, f"🔍 حفظ: {user_id} - {full_name}")
+            except:
+                pass
         
         now = datetime.now().strftime('%Y-%m-%d %H:%M')
         today = datetime.now().strftime('%Y-%m-%d')
@@ -199,6 +209,17 @@ def register(client):
                 await event.edit(f"❌ لم يتم العثور على القروب المركزي")
         except Exception as e:
             await event.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.دبق$'))
+    async def toggle_debug(event):
+        """تفعيل/تعطيل وضع التشخيص"""
+        global debug_mode
+        if not event.out:
+            return
+        
+        debug_mode = not debug_mode
+        status = "مفعل ✅" if debug_mode else "معطل ❌"
+        await event.edit(f"🔍 وضع التشخيص: {status}")
     
     @client.on(events.NewMessage(pattern=r'^\.احصائيات$'))
     async def stats(event):
