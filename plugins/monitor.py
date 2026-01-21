@@ -3,6 +3,7 @@
 يحفظ كل من يرسل في أي مجموعة + إشعارات التغييرات
 """
 import os
+import asyncio
 from datetime import datetime
 from telethon import events
 import database as db
@@ -10,10 +11,11 @@ import database as db
 # القروب المركزي للإشعارات
 LOG_GROUP = -1005264933718
 log_entity = None  # سيتم تعيينه عند البدء
+init_done = False
 
 def register(client):
     """تسجيل نظام الحفظ التلقائي"""
-    global log_entity
+    global log_entity, init_done
     
     owner_id = os.environ.get('OWNER_ID')
     if owner_id:
@@ -21,21 +23,48 @@ def register(client):
     
     # محاولة الاتصال بالقروب المركزي
     async def init_log_group():
-        global log_entity
+        global log_entity, init_done
+        if init_done:
+            return
         try:
+            # انتظار حتى يتصل البوت
+            await asyncio.sleep(5)
+            
             # جلب كل الدردشات للتعرف على القروب
             async for dialog in client.iter_dialogs():
-                if dialog.id == LOG_GROUP or dialog.entity.id == abs(LOG_GROUP) % 10000000000:
+                chat_id = dialog.id
+                # مقارنة الآيدي بطرق مختلفة
+                if chat_id == LOG_GROUP or chat_id == abs(LOG_GROUP):
                     log_entity = dialog.entity
                     print(f"✅ تم العثور على قروب الإشعارات: {dialog.name}")
-                    break
+                    init_done = True
+                    return
+            
             if not log_entity:
                 print(f"⚠️ لم يتم العثور على قروب الإشعارات {LOG_GROUP}")
+                # طباعة كل القروبات للتشخيص
+                print("📋 القروبات المتاحة:")
+                async for d in client.iter_dialogs():
+                    if d.is_group or d.is_channel:
+                        print(f"  - {d.name}: {d.id}")
+            init_done = True
         except Exception as e:
             print(f"❌ خطأ في جلب القروب: {e}")
     
-    # تشغيل عند بدء البوت
-    client.loop.create_task(init_log_group())
+    # أمر لتهيئة القروب يدوياً
+    @client.on(events.NewMessage(pattern=r'^\.ربط$'))
+    async def link_group(event):
+        """ربط القروب الحالي كقروب إشعارات"""
+        global log_entity
+        if not event.out:
+            return
+        
+        if not event.is_group:
+            await event.edit("❌ استخدم هذا الأمر داخل القروب المطلوب")
+            return
+        
+        log_entity = await event.get_chat()
+        await event.edit(f"✅ تم ربط هذا القروب للإشعارات\n🆔 `{event.chat_id}`")
     
     # ═══════════════════════════════════════════════════════════
     # الحفظ التلقائي - كل رسالة في أي مجموعة
