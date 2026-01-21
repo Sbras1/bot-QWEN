@@ -9,13 +9,33 @@ import database as db
 
 # القروب المركزي للإشعارات
 LOG_GROUP = -1005264933718
+log_entity = None  # سيتم تعيينه عند البدء
 
 def register(client):
     """تسجيل نظام الحفظ التلقائي"""
+    global log_entity
     
     owner_id = os.environ.get('OWNER_ID')
     if owner_id:
         owner_id = int(owner_id)
+    
+    # محاولة الاتصال بالقروب المركزي
+    async def init_log_group():
+        global log_entity
+        try:
+            # جلب كل الدردشات للتعرف على القروب
+            async for dialog in client.iter_dialogs():
+                if dialog.id == LOG_GROUP or dialog.entity.id == abs(LOG_GROUP) % 10000000000:
+                    log_entity = dialog.entity
+                    print(f"✅ تم العثور على قروب الإشعارات: {dialog.name}")
+                    break
+            if not log_entity:
+                print(f"⚠️ لم يتم العثور على قروب الإشعارات {LOG_GROUP}")
+        except Exception as e:
+            print(f"❌ خطأ في جلب القروب: {e}")
+    
+    # تشغيل عند بدء البوت
+    client.loop.create_task(init_log_group())
     
     # ═══════════════════════════════════════════════════════════
     # الحفظ التلقائي - كل رسالة في أي مجموعة
@@ -56,7 +76,8 @@ def register(client):
                 
                 # إرسال إشعار
                 try:
-                    notify_text = f"""
+                    if log_entity:
+                        notify_text = f"""
 📝 **تغيير اسم**
 
 🆔 `{user_id}`
@@ -65,7 +86,7 @@ def register(client):
 📧 @{username if username else 'بدون يوزر'}
 📅 {now}
 """
-                    await client.send_message(LOG_GROUP, notify_text)
+                        await client.send_message(log_entity, notify_text)
                 except:
                     pass
             
@@ -77,9 +98,10 @@ def register(client):
                 
                 # إرسال إشعار
                 try:
-                    old_uname = f"@{old_username}" if old_username else "بدون"
-                    new_uname = f"@{username}" if username else "بدون"
-                    notify_text = f"""
+                    if log_entity:
+                        old_uname = f"@{old_username}" if old_username else "بدون"
+                        new_uname = f"@{username}" if username else "بدون"
+                        notify_text = f"""
 📧 **تغيير يوزر**
 
 🆔 `{user_id}`
@@ -88,7 +110,7 @@ def register(client):
 📧 الجديد: {new_uname}
 📅 {now}
 """
-                    await client.send_message(LOG_GROUP, notify_text)
+                        await client.send_message(log_entity, notify_text)
                 except:
                     pass
             
@@ -134,8 +156,11 @@ def register(client):
             return
         
         try:
-            await client.send_message(LOG_GROUP, "🔔 **اختبار الإشعارات**\n\nالبوت متصل بنجاح!")
-            await event.edit(f"✅ تم الإرسال للقروب `{LOG_GROUP}`")
+            if log_entity:
+                await client.send_message(log_entity, "🔔 **اختبار الإشعارات**\n\nالبوت متصل بنجاح!")
+                await event.edit(f"✅ تم الإرسال للقروب")
+            else:
+                await event.edit(f"❌ لم يتم العثور على القروب المركزي")
         except Exception as e:
             await event.edit(f"❌ خطأ: {e}")
     
