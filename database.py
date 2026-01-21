@@ -1,5 +1,6 @@
 """
-قاعدة البيانات - Firestore
+قاعدة البيانات - Firebase Firestore
+نظام بسيط للحفظ التلقائي
 """
 import os
 import json
@@ -10,7 +11,6 @@ from firebase_admin import credentials, firestore
 def init_firebase():
     """تهيئة الاتصال بـ Firestore"""
     try:
-        # جلب بيانات الاعتماد من المتغير البيئي
         cred_json = os.environ.get('FIREBASE_CREDENTIALS')
         if cred_json:
             cred_dict = json.loads(cred_json)
@@ -22,182 +22,80 @@ def init_firebase():
         print(f"❌ خطأ في الاتصال بـ Firestore: {e}")
     return False
 
-# الحصول على قاعدة البيانات
 def get_db():
     """الحصول على كائن Firestore"""
     return firestore.client()
 
-# حفظ بيانات الملف الشخصي الأصلية
-def save_original_profile(user_id, data):
-    """حفظ البيانات الأصلية للمستخدم"""
-    try:
-        db = get_db()
-        db.collection('profiles').document(str(user_id)).set(data)
-        return True
-    except Exception as e:
-        print(f"❌ خطأ في الحفظ: {e}")
-        return False
-
-# جلب بيانات الملف الشخصي الأصلية
-def get_original_profile(user_id):
-    """جلب البيانات الأصلية للمستخدم"""
-    try:
-        db = get_db()
-        doc = db.collection('profiles').document(str(user_id)).get()
-        if doc.exists:
-            return doc.to_dict()
-    except Exception as e:
-        print(f"❌ خطأ في الجلب: {e}")
-    return None
-
-# حذف بيانات الملف الشخصي
-def delete_original_profile(user_id):
-    """حذف البيانات الأصلية"""
-    try:
-        db = get_db()
-        db.collection('profiles').document(str(user_id)).delete()
-        return True
-    except Exception as e:
-        print(f"❌ خطأ في الحذف: {e}")
-        return False
-
 # ═══════════════════════════════════════════════════════════════════
-# دوال المراقبة
+# حفظ وجلب الأعضاء
 # ═══════════════════════════════════════════════════════════════════
 
-# حفظ مجموعة مراقبة
-def save_monitored_group(group_id, data):
-    """حفظ بيانات مجموعة مراقبة"""
-    try:
-        db = get_db()
-        db.collection('monitored_groups').document(str(group_id)).set(data)
-        return True
-    except Exception as e:
-        print(f"❌ خطأ في حفظ المجموعة: {e}")
-        return False
-
-# جلب مجموعة مراقبة
-def get_monitored_group(group_id):
-    """جلب بيانات مجموعة مراقبة"""
-    try:
-        db = get_db()
-        doc = db.collection('monitored_groups').document(str(group_id)).get()
-        if doc.exists:
-            return doc.to_dict()
-    except Exception as e:
-        print(f"❌ خطأ في جلب المجموعة: {e}")
-    return None
-
-# جلب مجموعة بواسطة آيدي مجموعة المتغيرات
-def get_monitored_group_by_log_id(log_group_id):
-    """جلب بيانات مجموعة بواسطة آيدي مجموعة المتغيرات"""
-    try:
-        db = get_db()
-        docs = db.collection('monitored_groups').where('log_group_id', '==', log_group_id).get()
-        for doc in docs:
-            return doc.to_dict()
-    except Exception as e:
-        print(f"❌ خطأ في البحث: {e}")
-    return None
-
-# تحديث مجموعة مراقبة
-def update_monitored_group(group_id, data):
-    """تحديث بيانات مجموعة"""
-    try:
-        db = get_db()
-        db.collection('monitored_groups').document(str(group_id)).update(data)
-        return True
-    except Exception as e:
-        print(f"❌ خطأ في التحديث: {e}")
-        return False
-
-# جلب كل المجموعات المراقبة
-def get_all_monitored_groups():
-    """جلب كل المجموعات المراقبة"""
-    try:
-        db = get_db()
-        docs = db.collection('monitored_groups').get()
-        return [doc.to_dict() for doc in docs]
-    except Exception as e:
-        print(f"❌ خطأ في جلب المجموعات: {e}")
-    return []
-
-# حفظ عضو
-def save_member(group_id, user_id, data):
+def save_member(user_id, data):
     """حفظ بيانات عضو"""
     try:
         db = get_db()
-        # حفظ في المجموعة الخاصة
-        db.collection('members').document(str(group_id)).collection('users').document(str(user_id)).set(data)
-        # حفظ في الفهرس السريع للبحث
         db.collection('all_members').document(str(user_id)).set(data)
         return True
     except Exception as e:
         print(f"❌ خطأ في حفظ العضو: {e}")
         return False
 
-# جلب عضو
-def get_member(group_id, user_id):
+def get_member(user_id):
     """جلب بيانات عضو"""
     try:
         db = get_db()
-        doc = db.collection('members').document(str(group_id)).collection('users').document(str(user_id)).get()
+        doc = db.collection('all_members').document(str(user_id)).get()
         if doc.exists:
             return doc.to_dict()
     except Exception as e:
         print(f"❌ خطأ في جلب العضو: {e}")
     return None
 
-# جلب كل أعضاء مجموعة
-def get_group_members(group_id):
-    """جلب كل أعضاء مجموعة"""
+def search_by_username(username):
+    """البحث عن عضو باليوزرنيم"""
     try:
         db = get_db()
-        docs = db.collection('members').document(str(group_id)).collection('users').get()
-        return [doc.to_dict() for doc in docs]
-    except Exception as e:
-        print(f"❌ خطأ في جلب الأعضاء: {e}")
-    return []
-
-# جلب معلومات عضو من أي مجموعة
-def get_member_info(user_id):
-    """جلب معلومات عضو - جلب مباشر وسريع"""
-    try:
-        db = get_db()
-        # جلب مباشر من الفهرس السريع
-        doc = db.collection('all_members').document(str(user_id)).get()
-        if doc.exists:
+        username = username.replace("@", "").lower()
+        docs = db.collection('all_members').where('username_lower', '==', username).limit(1).get()
+        for doc in docs:
             return doc.to_dict()
     except Exception as e:
-        print(f"❌ خطأ في البحث عن العضو: {e}")
+        print(f"❌ خطأ في البحث: {e}")
     return None
 
 # ═══════════════════════════════════════════════════════════════════
-# دوال مجموعة المتغيرات المركزية
+# تنظيف البيانات القديمة
 # ═══════════════════════════════════════════════════════════════════
 
-# حفظ مجموعة المتغيرات المركزية
-def save_central_log_group(log_group_id):
-    """حفظ آيدي مجموعة المتغيرات المركزية"""
+def cleanup_old_data():
+    """حذف البيانات القديمة (monitored_groups, settings, members)"""
     try:
         db = get_db()
-        db.collection('settings').document('central_log').set({
-            'log_group_id': log_group_id,
-            'updated_at': __import__('datetime').datetime.now().isoformat()
-        })
-        return True
+        deleted_count = 0
+        
+        # حذف monitored_groups
+        docs = db.collection('monitored_groups').get()
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+        
+        # حذف settings
+        docs = db.collection('settings').get()
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+        
+        # حذف members (البنية القديمة)
+        docs = db.collection('members').get()
+        for doc in docs:
+            # حذف subcollection users
+            users = doc.reference.collection('users').get()
+            for user in users:
+                user.reference.delete()
+            doc.reference.delete()
+            deleted_count += 1
+        
+        return deleted_count
     except Exception as e:
-        print(f"❌ خطأ في حفظ المجموعة المركزية: {e}")
-        return False
-
-# جلب مجموعة المتغيرات المركزية
-def get_central_log_group():
-    """جلب آيدي مجموعة المتغيرات المركزية"""
-    try:
-        db = get_db()
-        doc = db.collection('settings').document('central_log').get()
-        if doc.exists:
-            return doc.to_dict().get('log_group_id')
-    except Exception as e:
-        print(f"❌ خطأ في جلب المجموعة المركزية: {e}")
-    return None
+        print(f"❌ خطأ في التنظيف: {e}")
+        return 0
