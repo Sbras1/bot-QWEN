@@ -3,10 +3,14 @@
 يحفظ كل من يرسل في أي مجموعة + إشعارات التغييرات
 """
 import os
+import re
 import asyncio
 from datetime import datetime
 from telethon import events
 import database as db
+
+# الحد الأقصى للاستيراد
+MAX_IMPORT_LIMIT = 15000
 
 # القروب المركزي للإشعارات
 LOG_GROUP = -1005264933718
@@ -620,15 +624,244 @@ def register(client):
 `.بحث @user` - بحث باليوزر
 
 **📤 تصدير:**
-`.تصدير` - تصدير كل الأعضاء في ملف
+`.تصدير` - تصدير كل الأعضاء
+`.تصدير -123456` - تصدير أعضاء قروب معين
+
+**📥 استيراد:**
+أرسل ملف .txt مع كابشن:
+`.استيراد` - استيراد للكل
+`.استيراد -123456` - استيراد مع ربط قروب
 
 **⚙️ إدارة:**
 `.تنظيف` - حذف البيانات القديمة
-`.اوامر` - عرض الأوامر
+`.ربط` - ربط القروب للإشعارات
+`.دبق` - تفعيل وضع التشخيص
+`.فحص` - فحص كل القروبات
 
 **ℹ️ ملاحظة:**
 الحفظ تلقائي + إشعارات التغييرات للقروب المركزي.
 """
         await event.reply(text)
+    
+    # ═══════════════════════════════════════════════════════════
+    # استيراد الأعضاء من ملف
+    # ═══════════════════════════════════════════════════════════
+    
+    def parse_import_file(content):
+        """تحليل ملف الاستيراد بكل الصيغ المدعومة"""
+        members = []
+        
+        # صيغة 1: نفس صيغة التصدير
+        # 🆔 123456
+        # 👤 Ahmed
+        # 📧 @ahmed123
+        pattern_export = re.compile(
+            r'🆔\s*(\d+)\s*\n'
+            r'👤\s*(.+?)\s*\n'
+            r'📧\s*(@?\w+|بدون يوزر)',
+            re.MULTILINE
+        )
+        
+        for match in pattern_export.finditer(content):
+            user_id = match.group(1)
+            full_name = match.group(2).strip()
+            username = match.group(3).strip()
+            if username == 'بدون يوزر' or username.lower() == 'none':
+                username = ''
+            username = username.replace('@', '')
+            members.append({
+                'user_id': int(user_id),
+                'full_name': full_name,
+                'username': username
+            })
+        
+        if members:
+            return members
+        
+        # صيغة 2: CSV بسيط (user_id,name,username)
+        lines = content.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('📊') or line.startswith('━'):
+                continue
+            
+            # CSV: 123456,Ahmed,@ahmed123 أو 123456,Ahmed,ahmed123
+            if ',' in line:
+                parts = line.split(',')
+                if len(parts) >= 2:
+                    try:
+                        user_id = int(parts[0].strip())
+                        full_name = parts[1].strip() or 'بدون اسم'
+                        username = parts[2].strip() if len(parts) > 2 else ''
+                        username = username.replace('@', '')
+                        if username.lower() in ['none', 'بدون', 'بدون يوزر', '']:
+                            username = ''
+                        members.append({
+                            'user_id': user_id,
+                            'full_name': full_name,
+                            'username': username
+                        })
+                    except:
+                        pass
+                continue
+            
+            # صيغة 3: سطر واحد آيدي فقط
+            if line.isdigit():
+                members.append({
+                    'user_id': int(line),
+                    'full_name': 'بدون اسم',
+                    'username': ''
+                })
+                continue
+            
+            # صيغة 4: آيدي مع مسافة ثم اسم
+            # 123456 Ahmed @ahmed123
+            match = re.match(r'^(\d+)\s+(.+?)(?:\s+@(\w+))?$', line)
+            if match:
+                members.append({
+                    'user_id': int(match.group(1)),
+                    'full_name': match.group(2).strip(),
+                    'username': match.group(3) or ''
+                })
+        
+        return members
+    
+    @client.on(events.NewMessage(incoming=False))
+    async def import_members(event):
+        """استيراد الأعضاء من ملف"""
+        # تحقق من الكابشن
+        if not event.message.file:
+            return
+        
+        caption = event.message.message or ''
+        
+        # تحقق من أمر الاستيراد
+        match = re.match(r'^\.استيراد(?:\s+(-?\d+))?$', caption)
+        if not match:
+            return
+        
+        group_id = match.group(1)  # آيدي القروب (اختياري)
+        group_name = None
+        
+        # جلب اسم القروب إذا محدد
+        if group_id:
+            try:
+                entity = await client.get_entity(int(group_id))
+                group_name = getattr(entity, 'title', None) or str(group_id)
+            except:
+                group_name = str(group_id)
+        
+        msg = await event.reply("⏳ **جاري تحليل الملف...**")
+        
+        try:
+            # تحميل الملف
+            file_data = await event.message.download_media(bytes)
+            
+            # محاولة فك الترميز
+            try:
+                content = file_data.decode('utf-8')
+            except:
+                try:
+                    content = file_data.decode('utf-8-sig')
+                except:
+                    content = file_data.decode('latin-1')
+            
+            # تحليل الملف
+            members = parse_import_file(content)
+            
+            if not members:
+                await msg.edit("❌ **لم يتم العثور على أعضاء في الملف!**\n\nالصيغ المدعومة:\n• صيغة التصدير\n• CSV: `id,name,username`\n• سطر لكل آيدي")
+                return
+            
+            if len(members) > MAX_IMPORT_LIMIT:
+                await msg.edit(f"❌ **الملف كبير جداً!**\n\nالحد الأقصى: {MAX_IMPORT_LIMIT} عضو\nالملف يحتوي: {len(members)} عضو")
+                return
+            
+            await msg.edit(f"⏳ **جاري استيراد {len(members)} عضو...**")
+            
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            imported_new = 0
+            updated = 0
+            errors = 0
+            
+            for m in members:
+                try:
+                    user_id = m['user_id']
+                    full_name = m['full_name']
+                    username = m['username']
+                    
+                    # جلب البيانات القديمة
+                    existing = db.get_member(user_id)
+                    
+                    if existing:
+                        # تحديث مع حفظ السجل
+                        old_name = existing.get('full_name', '')
+                        old_username = existing.get('username', '')
+                        
+                        # تحديث سجل الأسماء
+                        if full_name and full_name != 'بدون اسم' and old_name != full_name:
+                            name_history = existing.get('name_history', [])
+                            name_history.append({'name': full_name, 'date': today})
+                            existing['name_history'] = name_history
+                            existing['full_name'] = full_name
+                        
+                        # تحديث سجل اليوزرات
+                        if username and old_username != username:
+                            username_history = existing.get('username_history', [])
+                            username_history.append({'username': username, 'date': today})
+                            existing['username_history'] = username_history
+                            existing['username'] = username
+                            existing['username_lower'] = username.lower()
+                        
+                        # إضافة القروب
+                        if group_id:
+                            groups_seen = existing.get('groups_seen', {})
+                            groups_seen[str(group_id)] = group_name
+                            existing['groups_seen'] = groups_seen
+                        
+                        existing['last_seen'] = now
+                        db.save_member(user_id, existing)
+                        updated += 1
+                    else:
+                        # عضو جديد
+                        new_data = {
+                            'user_id': user_id,
+                            'first_name': full_name.split()[0] if full_name else '',
+                            'last_name': ' '.join(full_name.split()[1:]) if full_name and len(full_name.split()) > 1 else '',
+                            'full_name': full_name,
+                            'username': username,
+                            'username_lower': username.lower() if username else '',
+                            'first_seen': now,
+                            'last_seen': now,
+                            'name_history': [{'name': full_name, 'date': today}],
+                            'username_history': [{'username': username, 'date': today}] if username else [],
+                            'groups_seen': {str(group_id): group_name} if group_id else {},
+                            'imported': True,
+                            'import_date': now
+                        }
+                        db.save_member(user_id, new_data)
+                        imported_new += 1
+                        
+                except Exception as e:
+                    errors += 1
+            
+            # النتيجة
+            result = f"""
+✅ **تم الاستيراد بنجاح!**
+
+📊 **الملخص:**
+• ✅ أعضاء جدد: **{imported_new}**
+• 🔄 تم تحديثهم: **{updated}**
+• ❌ أخطاء: **{errors}**
+"""
+            if group_id:
+                result += f"\n📍 القروب: `{group_id}`"
+            
+            await msg.edit(result)
+            
+        except Exception as e:
+            await msg.edit(f"❌ **خطأ:** {e}")
     
     print("✅ نظام الحفظ التلقائي جاهز")
