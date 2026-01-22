@@ -1,13 +1,45 @@
 """
 قاعدة البيانات - Firebase Firestore
-نظام بسيط للحفظ التلقائي
+نظام بسيط للحفظ التلقائي مع تخزين مؤقت
 """
 import os
 import json
+import time
 import firebase_admin
 from firebase_admin import credentials, firestore
 
+# ═══════════════════════════════════════════════════════════════════
+# التخزين المؤقت (Cache) لتقليل طلبات Firebase
+# ═══════════════════════════════════════════════════════════════════
+_cache = {}
+_cache_time = {}
+CACHE_DURATION = 300  # 5 دقائق
+
+def get_cached(key):
+    """جلب من الكاش"""
+    if key in _cache:
+        if time.time() - _cache_time.get(key, 0) < CACHE_DURATION:
+            return _cache[key]
+    return None
+
+def set_cache(key, value):
+    """حفظ في الكاش"""
+    _cache[key] = value
+    _cache_time[key] = time.time()
+
+def clear_cache(key=None):
+    """مسح الكاش"""
+    if key:
+        _cache.pop(key, None)
+        _cache_time.pop(key, None)
+    else:
+        _cache.clear()
+        _cache_time.clear()
+
+# ═══════════════════════════════════════════════════════════════════
 # تهيئة Firebase
+# ═══════════════════════════════════════════════════════════════════
+
 def init_firebase():
     """تهيئة الاتصال بـ Firestore"""
     try:
@@ -35,18 +67,27 @@ def save_member(user_id, data):
     try:
         db = get_db()
         db.collection('all_members').document(str(user_id)).set(data)
+        # تحديث الكاش
+        set_cache(f"member_{user_id}", data)
         return True
     except Exception as e:
         print(f"❌ خطأ في حفظ العضو: {e}")
         return False
 
 def get_member(user_id):
-    """جلب بيانات عضو"""
+    """جلب بيانات عضو مع كاش"""
+    # جلب من الكاش أولاً
+    cached = get_cached(f"member_{user_id}")
+    if cached:
+        return cached
+    
     try:
         db = get_db()
         doc = db.collection('all_members').document(str(user_id)).get()
         if doc.exists:
-            return doc.to_dict()
+            data = doc.to_dict()
+            set_cache(f"member_{user_id}", data)
+            return data
     except Exception as e:
         print(f"❌ خطأ في جلب العضو: {e}")
     return None

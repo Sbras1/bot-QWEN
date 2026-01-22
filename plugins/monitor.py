@@ -12,6 +12,10 @@ import database as db
 # الحد الأقصى للاستيراد
 MAX_IMPORT_LIMIT = 15000
 
+# تتبع آخر حفظ لمنع التكرار
+_last_save = {}
+SAVE_COOLDOWN = 60  # ثانية واحدة بين كل حفظ لنفس المستخدم
+
 # القروب المركزي للإشعارات
 LOG_GROUP = -1005264933718
 log_entity = None  # سيتم تعيينه عند البدء
@@ -95,6 +99,15 @@ def register(client):
             return
         
         user_id = sender.id
+        
+        # منع التكرار - لا نحفظ نفس المستخدم كل ثانية
+        import time
+        now_ts = time.time()
+        if user_id in _last_save:
+            if now_ts - _last_save[user_id] < SAVE_COOLDOWN:
+                return  # تخطي الحفظ
+        _last_save[user_id] = now_ts
+        
         first_name = getattr(sender, 'first_name', '') or ''
         last_name = getattr(sender, 'last_name', '') or ''
         full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
