@@ -633,28 +633,365 @@ def register(client):
 **👤 استعلام:**
 `.عضو 123456` - معلومات عضو
 `.سجل 123456` - سجل تغييراته
+`.نشاط 123456` - نشاط العضو في القروبات
+
+**🔍 بحث:**
 `.بحث 123456` - بحث بالآيدي
 `.بحث @user` - بحث باليوزر
+`.بحث اسم:أحمد` - بحث بالاسم
+`.بحث قروب:-123456` - بحث داخل قروب
+`.بدون` - أعضاء بدون يوزرنيم
+`.مشترك -123 -456` - مشتركين بين قروبين
+`.اكثر قروبات` - أعضاء بأكثر قروبات
+
+**📊 ملخص:**
+`.ملخص` - ملخص تغييرات اليوم
 
 **📤 تصدير:**
 `.تصدير` - تصدير كل الأعضاء
-`.تصدير -123456` - تصدير أعضاء قروب معين
+`.تصدير -123456` - تصدير أعضاء قروب
 
 **📥 استيراد:**
-أرسل ملف .txt مع كابشن:
-`.استيراد` - استيراد للكل
+`.استيراد` - استيراد من ملف
 `.استيراد -123456` - استيراد مع ربط قروب
+
+**💾 نسخ احتياطي:**
+`.نسخ` - إنشاء نسخة احتياطية
+`.استعادة` - استعادة من نسخة (رد على ملف)
 
 **⚙️ إدارة:**
 `.تنظيف` - حذف البيانات القديمة
 `.ربط` - ربط القروب للإشعارات
-`.دبق` - تفعيل وضع التشخيص
+`.دبق` - وضع التشخيص
 `.فحص` - فحص كل القروبات
-
-**ℹ️ ملاحظة:**
-الحفظ تلقائي + إشعارات التغييرات للقروب المركزي.
 """
         await event.reply(text)
+    
+    # ═══════════════════════════════════════════════════════════
+    # أوامر جديدة: نشاط، ملخص، بحث متقدم
+    # ═══════════════════════════════════════════════════════════
+    
+    @client.on(events.NewMessage(pattern=r'^\.نشاط (\d+)$'))
+    async def member_activity(event):
+        """عرض نشاط عضو في القروبات"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        user_id = int(event.pattern_match.group(1))
+        member = db.get_member(user_id)
+        
+        if not member:
+            await event.reply("❌ لم يتم العثور على هذا العضو.")
+            return
+        
+        groups_seen = member.get('groups_seen', {})
+        username = member.get('username', '')
+        username_text = f"@{username}" if username else "بدون يوزر"
+        
+        text = f"""
+**📊 نشاط العضو**
+
+🆔 `{user_id}`
+👤 {member.get('full_name', 'بدون اسم')}
+📧 {username_text}
+
+**📍 القروبات ({len(groups_seen)}):**
+"""
+        if groups_seen:
+            for gid, gname in list(groups_seen.items())[:20]:
+                text += f"• {gname}\n  `{gid}`\n"
+            if len(groups_seen) > 20:
+                text += f"\n... و {len(groups_seen) - 20} قروب آخر"
+        else:
+            text += "لم يُشاهد في أي قروب بعد."
+        
+        await event.reply(text)
+    
+    @client.on(events.NewMessage(pattern=r'^\.ملخص$'))
+    async def daily_summary(event):
+        """ملخص تغييرات اليوم"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        msg = await event.reply("⏳ جاري جلب الملخص...")
+        
+        try:
+            changes = db.get_today_changes()
+            
+            text = f"""
+**📊 ملخص اليوم**
+
+👥 أعضاء جدد: **{len(changes['new_members'])}**
+📝 تغييرات اسم: **{len(changes['name_changes'])}**
+📧 تغييرات يوزر: **{len(changes['username_changes'])}**
+"""
+            # آخر 5 أعضاء جدد
+            if changes['new_members']:
+                text += "\n**🆕 آخر الأعضاء الجدد:**\n"
+                for m in changes['new_members'][:5]:
+                    uname = f"@{m.get('username')}" if m.get('username') else ""
+                    text += f"• {m.get('full_name')} {uname}\n"
+            
+            # آخر 5 تغييرات اسم
+            if changes['name_changes']:
+                text += "\n**📝 تغييرات الاسم:**\n"
+                for m in changes['name_changes'][:5]:
+                    text += f"• `{m.get('user_id')}` → {m.get('full_name')}\n"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.بحث اسم:(.+)$'))
+    async def search_by_name(event):
+        """بحث بالاسم"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        query = event.pattern_match.group(1).strip()
+        msg = await event.reply("⏳ جاري البحث...")
+        
+        try:
+            results = db.search_by_name(query)
+            
+            if not results:
+                await msg.edit(f"❌ لم يتم العثور على نتائج للاسم: {query}")
+                return
+            
+            text = f"**🔍 نتائج البحث عن: {query}**\n"
+            text += f"📊 عدد النتائج: {len(results)}\n\n"
+            
+            for m in results[:15]:
+                uname = f"@{m.get('username')}" if m.get('username') else "بدون يوزر"
+                text += f"🆔 `{m.get('user_id')}`\n👤 {m.get('full_name')}\n📧 {uname}\n\n"
+            
+            if len(results) > 15:
+                text += f"... و {len(results) - 15} نتيجة أخرى"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.بحث قروب:(-?\d+)(?:\s+(.+))?$'))
+    async def search_in_group(event):
+        """بحث داخل قروب معين"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        group_id = event.pattern_match.group(1)
+        query = event.pattern_match.group(2)
+        
+        msg = await event.reply("⏳ جاري البحث...")
+        
+        try:
+            results = db.search_in_group(group_id, query)
+            
+            if not results:
+                await msg.edit(f"❌ لم يتم العثور على نتائج في القروب {group_id}")
+                return
+            
+            text = f"**🔍 نتائج البحث في القروب**\n"
+            text += f"🆔 `{group_id}`\n"
+            if query:
+                text += f"🔎 البحث: {query}\n"
+            text += f"📊 عدد النتائج: {len(results)}\n\n"
+            
+            for m in results[:15]:
+                uname = f"@{m.get('username')}" if m.get('username') else "بدون يوزر"
+                text += f"• `{m.get('user_id')}` - {m.get('full_name')} {uname}\n"
+            
+            if len(results) > 15:
+                text += f"\n... و {len(results) - 15} عضو آخر"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.بدون$'))
+    async def members_without_username(event):
+        """أعضاء بدون يوزرنيم"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        msg = await event.reply("⏳ جاري البحث...")
+        
+        try:
+            results = db.get_members_without_username()
+            
+            if not results:
+                await msg.edit("✅ كل الأعضاء لديهم يوزرنيم!")
+                return
+            
+            text = f"**👥 أعضاء بدون يوزرنيم**\n"
+            text += f"📊 العدد: {len(results)}\n\n"
+            
+            for m in results[:20]:
+                text += f"🆔 `{m.get('user_id')}` - {m.get('full_name')}\n"
+            
+            if len(results) > 20:
+                text += f"\n... و {len(results) - 20} عضو آخر"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.مشترك (-?\d+) (-?\d+)$'))
+    async def common_members(event):
+        """أعضاء مشتركين بين قروبين"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        group1 = event.pattern_match.group(1)
+        group2 = event.pattern_match.group(2)
+        
+        msg = await event.reply("⏳ جاري المقارنة...")
+        
+        try:
+            common = db.get_common_members(group1, group2)
+            
+            text = f"**🔗 الأعضاء المشتركين**\n"
+            text += f"📍 القروب 1: `{group1}`\n"
+            text += f"📍 القروب 2: `{group2}`\n"
+            text += f"📊 المشتركين: **{len(common)}**\n\n"
+            
+            for m in common[:20]:
+                uname = f"@{m.get('username')}" if m.get('username') else ""
+                text += f"• `{m.get('user_id')}` - {m.get('full_name')} {uname}\n"
+            
+            if len(common) > 20:
+                text += f"\n... و {len(common) - 20} عضو آخر"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.اكثر قروبات$'))
+    async def most_groups(event):
+        """أعضاء بأكثر قروبات"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        msg = await event.reply("⏳ جاري البحث...")
+        
+        try:
+            results = db.get_members_by_groups_count(20)
+            
+            if not results:
+                await msg.edit("❌ لا توجد بيانات.")
+                return
+            
+            text = "**🏆 أعضاء بأكثر قروبات**\n\n"
+            
+            for i, (count, m) in enumerate(results, 1):
+                uname = f"@{m.get('username')}" if m.get('username') else ""
+                text += f"**{i}.** {m.get('full_name')} {uname}\n"
+                text += f"   🆔 `{m.get('user_id')}` | 📍 {count} قروب\n\n"
+            
+            await msg.edit(text)
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    # ═══════════════════════════════════════════════════════════
+    # نسخ احتياطي واستعادة
+    # ═══════════════════════════════════════════════════════════
+    
+    @client.on(events.NewMessage(pattern=r'^\.نسخ$'))
+    async def create_backup(event):
+        """إنشاء نسخة احتياطية"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        msg = await event.reply("⏳ جاري إنشاء النسخة الاحتياطية...")
+        
+        try:
+            backup = db.create_backup()
+            
+            if not backup:
+                await msg.edit("❌ فشل في إنشاء النسخة الاحتياطية.")
+                return
+            
+            # حفظ كملف JSON
+            import json
+            filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(backup, f, ensure_ascii=False, indent=2)
+            
+            members_count = len(backup.get('all_members', {}))
+            
+            await msg.delete()
+            await client.send_file(
+                event.chat_id,
+                filename,
+                caption=f"💾 **نسخة احتياطية**\n📅 {backup.get('backup_date')}\n👥 {members_count} عضو"
+            )
+            
+            import os
+            os.remove(filename)
+            
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
+    @client.on(events.NewMessage(pattern=r'^\.استعادة$'))
+    async def restore_backup(event):
+        """استعادة من نسخة احتياطية"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        # التحقق من الرد على ملف
+        reply = await event.get_reply_message()
+        if not reply or not reply.file:
+            await event.reply("❌ رد على ملف النسخة الاحتياطية (.json)")
+            return
+        
+        msg = await event.reply("⏳ جاري الاستعادة...")
+        
+        try:
+            import json
+            
+            # تحميل الملف
+            file_data = await reply.download_media(bytes)
+            backup = json.loads(file_data.decode('utf-8'))
+            
+            # التحقق من صحة الملف
+            if 'all_members' not in backup:
+                await msg.edit("❌ ملف غير صالح!")
+                return
+            
+            # استعادة
+            restored = db.restore_backup(backup)
+            
+            await msg.edit(f"✅ **تم الاستعادة بنجاح!**\n👥 {restored} عضو")
+            
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
     
     # ═══════════════════════════════════════════════════════════
     # استيراد الأعضاء من ملف
