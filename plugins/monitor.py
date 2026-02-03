@@ -563,6 +563,118 @@ def register(client):
         
         await event.reply(text)
     
+    @client.on(events.NewMessage(pattern=r'^\.جلب (.+)$'))
+    async def fetch_from_telegram(event):
+        """جلب معلومات من تيليجرام مباشرة"""
+        if not owner_id:
+            return
+        sender = await event.get_sender()
+        if sender.id != owner_id and not event.out:
+            return
+        
+        query = event.pattern_match.group(1).strip()
+        msg = await event.reply("⏳ جاري الجلب من تيليجرام...")
+        
+        try:
+            # محاولة جلب المستخدم من تيليجرام
+            if query.isdigit():
+                user = await client.get_entity(int(query))
+            else:
+                # إزالة @ إذا موجود
+                query = query.replace("@", "")
+                user = await client.get_entity(query)
+            
+            if not user:
+                await msg.edit("❌ لم يتم العثور على المستخدم.")
+                return
+            
+            user_id = user.id
+            first_name = getattr(user, 'first_name', '') or ''
+            last_name = getattr(user, 'last_name', '') or ''
+            full_name = f"{first_name} {last_name}".strip() or 'بدون اسم'
+            username = getattr(user, 'username', '') or ''
+            phone = getattr(user, 'phone', '') or ''
+            is_bot = getattr(user, 'bot', False)
+            
+            username_text = f"@{username}" if username else "بدون يوزر"
+            
+            # جلب الصورة الشخصية
+            has_photo = "✅ نعم" if getattr(user, 'photo', None) else "❌ لا"
+            
+            # التحقق من قاعدة البيانات
+            existing = db.get_member(user_id)
+            in_db = "✅ محفوظ" if existing else "❌ غير محفوظ"
+            
+            text = f"""
+**🌐 معلومات من تيليجرام**
+
+🆔 `{user_id}`
+👤 {full_name}
+📧 {username_text}
+📱 {phone if phone else 'مخفي'}
+🤖 بوت: {'نعم' if is_bot else 'لا'}
+🖼️ صورة: {has_photo}
+💾 قاعدة البيانات: {in_db}
+"""
+            
+            # حفظ في قاعدة البيانات إذا غير موجود
+            if not existing and not is_bot:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M')
+                today = datetime.now().strftime('%Y-%m-%d')
+                
+                new_data = {
+                    'user_id': user_id,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'full_name': full_name,
+                    'username': username,
+                    'username_lower': username.lower() if username else '',
+                    'first_seen': now,
+                    'last_seen': now,
+                    'name_history': [{'name': full_name, 'date': today}],
+                    'username_history': [{'username': username, 'date': today}] if username else [],
+                    'groups_seen': {},
+                    'fetched': True,
+                    'fetch_date': now
+                }
+                db.save_member(user_id, new_data)
+                text += "\n✅ **تم حفظه في قاعدة البيانات!**"
+            elif existing:
+                # تحديث البيانات
+                old_name = existing.get('full_name', '')
+                old_username = existing.get('username', '')
+                
+                updated = False
+                
+                if old_name != full_name:
+                    name_history = existing.get('name_history', [])
+                    name_history.append({'name': full_name, 'date': datetime.now().strftime('%Y-%m-%d')})
+                    existing['name_history'] = name_history
+                    existing['full_name'] = full_name
+                    existing['first_name'] = first_name
+                    existing['last_name'] = last_name
+                    updated = True
+                
+                if old_username != username:
+                    username_history = existing.get('username_history', [])
+                    username_history.append({'username': username, 'date': datetime.now().strftime('%Y-%m-%d')})
+                    existing['username_history'] = username_history
+                    existing['username'] = username
+                    existing['username_lower'] = username.lower() if username else ''
+                    updated = True
+                
+                if updated:
+                    existing['last_seen'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                    db.save_member(user_id, existing)
+                    text += "\n🔄 **تم تحديث البيانات!**"
+            
+            await msg.edit(text)
+            
+        except ValueError:
+            await msg.edit("❌ يوزر غير صالح أو غير موجود.")
+        except Exception as e:
+            await msg.edit(f"❌ خطأ: {e}")
+    
     @client.on(events.NewMessage(pattern=r'^\.بحث (.+)$'))
     async def search_member(event):
         """البحث عن عضو"""
@@ -636,8 +748,9 @@ def register(client):
 `.نشاط 123456` - نشاط العضو في القروبات
 
 **🔍 بحث:**
-`.بحث 123456` - بحث بالآيدي
-`.بحث @user` - بحث باليوزر
+`.بحث 123456` - بحث بالآيدي (قاعدة البيانات)
+`.بحث @user` - بحث باليوزر (قاعدة البيانات)
+`.جلب @user` - جلب من تيليجرام مباشرة
 `.بحث اسم:أحمد` - بحث بالاسم
 `.بحث قروب:-123456` - بحث داخل قروب
 `.بدون` - أعضاء بدون يوزرنيم
