@@ -81,6 +81,12 @@ def get_member(user_id):
     if cached:
         return cached
     
+    # جلب من الفهرس إذا موجود
+    if _search_index and str(user_id) in _search_index.get('by_id', {}):
+        data = _search_index['by_id'][str(user_id)]
+        set_cache(f"member_{user_id}", data)
+        return data
+    
     try:
         db = get_db()
         doc = db.collection('all_members').document(str(user_id)).get()
@@ -94,9 +100,14 @@ def get_member(user_id):
 
 def search_by_username(username):
     """البحث عن عضو باليوزرنيم"""
+    username = username.replace("@", "").lower()
+    
+    # جلب من الفهرس أولاً (أسرع)
+    if _search_index and username in _search_index.get('by_username', {}):
+        return _search_index['by_username'][username]
+    
     try:
         db = get_db()
-        username = username.replace("@", "").lower()
         docs = db.collection('all_members').where('username_lower', '==', username).limit(1).get()
         for doc in docs:
             return doc.to_dict()
@@ -106,6 +117,10 @@ def search_by_username(username):
 
 def get_members_count():
     """عدد الأعضاء المحفوظين"""
+    # استخدام الفهرس إذا موجود
+    if _search_index and _search_index.get('all'):
+        return len(_search_index['all'])
+    
     try:
         db = get_db()
         docs = db.collection('all_members').get()
